@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta http-equiv="Content-type" content="text/html; charset=utf-8">
+    <title>Shadow world test</title>
+    <script src="https://cdn.socket.io/socket.io-1.2.0.js"></script>
+    <script src="http://code.jquery.com/jquery-1.11.1.js"></script>
+    <script>
+var received_amount = 0;
+var messages = 0;
+var start;
+var updater;
+var socket = io();
+
+socket.on('m', function(){
+    received_amount++;
+});
+
+function update_result() {
+    var result = document.getElementById('result');
+    result.innerHTML = "Received " + received_amount +  " messages in " + (new Date().getTime() - start) + "ms";
+}
+
+function stress() {
+    received_amount = 0;
+    updater = setInterval(function() {
+        if (received_amount > 0) {
+            update_result();
+        }
+    }, 1000);
+    messages = parseInt(document.getElementById('messages').value);
+    start = new Date().getTime();
+    for (var i=0; i < messages; i++) {
+        socket.emit('m', "PING");
+    };
+    document.getElementById('sent').innerHTML = "Sent " + messages + " messages in " + (new Date().getTime() - start) + "ms";
+}
+
+$(function() { stress(); });
+    </script>
+  </head>
+  <body>
+    # of messages to send: <input type="text" id="messages" value="10000">
+    <button onclick="stress();">Stress</button>
+    <div id="sent"></div>
+    <div id="received"></div>
+    <div id="result"></div>
+  </body>
+</html>
