@@ -14,10 +14,6 @@ var socket = eio('ws://localhost:8080');
 socket.on('open', function() {
     socket.on('message', function(){
         received_amount++;
-        if (received_amount >= messages) {
-            clearInterval(updater);
-            update_result();
-        }
     });
 
     socket.on('close', function() {
