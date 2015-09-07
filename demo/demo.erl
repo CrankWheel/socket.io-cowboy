@@ -32,7 +32,6 @@ open(Pid, Sid, _Opts, _PeerAddress) ->
     {ok, #session_state{}}.
 
 recv(Pid, Sid, {message, Message}, SessionState) ->
-    %error_logger:info_msg("recv first ~p ~p ~p~n", [Pid, Sid, Message]),
     demo_mgr:publish_to_all(Message),
     {ok, SessionState}.
 

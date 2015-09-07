@@ -90,7 +90,7 @@ handle_cast({publish_to_all, MessageBin}, State) ->
                       engineio_session:send_message(Pid, MessageBin),
                       AccIn
               end, notused, State#state.sessions),
-    {reply, ok, State};
+    {noreply, State};
 handle_cast(_Msg, State) ->
     {noreply, State}.
 

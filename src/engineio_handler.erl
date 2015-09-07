@@ -23,7 +23,10 @@
          info/3,
          websocket_handle/3, websocket_info/3]).
 
-% TODO(joi): How do we get notified of session timeout (info timeout)?
+% Our decoder currently doesn't support streaming, so we need to read in the
+% entire POST body when a polling transport is used. Read up to 24 MB, above
+% that the server will simply freak out.
+-define(MAXIMUM_BODY_BYTES, 24*1024*1024).
 
 -record(http_state, {config, sid, heartbeat_tref, pid, jsonp, dbgmethod, dbgurl}).
 -record(websocket_state, {config, pid, messages}).
@@ -215,14 +218,9 @@ handle_polling(Req, Sid, Config, JsonP) ->
                                        Msgs
                                end,
                     ?DBGPRINT({Data2, Messages}),
-                    case engineio_session:recv(Pid, Messages) of
-                        noproc ->
-                            ?DBGPRINT({"Wrong sid", noproc, Pid, Messages}),
-                            {ok, cowboy_req:reply(400, <<"Wrong sid">>, Req2), #http_state{config = Config, sid = Sid, jsonp = JsonP}};
-                        _ ->
-                            Req3 = cowboy_req:reply(200, text_headers(), <<"ok">>, Req2),
-                            {ok, Req3, #http_state{config = Config, sid = Sid, jsonp = JsonP}}
-                    end;
+                    engineio_session:recv(Pid, Messages),
+                    Req3 = cowboy_req:reply(200, text_headers(), <<"ok">>, Req2),
+                    {ok, Req3, #http_state{config = Config, sid = Sid, jsonp = JsonP}};
                 error ->
                     ?DBGPRINT({"Can't get request data", Req, JsonP}),
                     {ok, cowboy_req:reply(400, <<"Error reading request data">>, Req), #http_state{config = Config, sid = Sid}}
@@ -325,14 +323,14 @@ enable_cors(Req) ->
 get_request_data(Req, JsonP) ->
     case JsonP of
         undefined ->
-            case cowboy_req:body(Req) of
+            case cowboy_req:body(Req, [{length, ?MAXIMUM_BODY_BYTES}]) of
                 {ok, Body, Req1} ->
                     {ok, Body, Req1};
                 {error, _} ->
                     error
             end;
         _Num ->
-            case cowboy_req:body_qs(Req) of
+            case cowboy_req:body_qs(Req, [{length, ?MAXIMUM_BODY_BYTES}]) of
                 {ok, PostVals, Req1} ->
                     Data = proplists:get_value(<<"d">>, PostVals),
                     Data2 = binary:replace(Data, <<"\\\n">>, <<"\n">>, [global]),
