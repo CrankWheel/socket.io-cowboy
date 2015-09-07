@@ -3,7 +3,7 @@
 -behaviour(gen_server).
 
 %% API
--export([start_link/0, publish_to_all/1, emit_to_all/2, add_session/1, remove_session/1]).
+-export([start_link/0, publish_to_all/1, add_session/1, remove_session/1]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -28,10 +28,7 @@ start_link() ->
     gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
 
 publish_to_all(MessageBin) ->
-    gen_server:call(?SERVER, {publish_to_all, MessageBin}).
-
-emit_to_all(EventName, ArgsList) ->
-    gen_server:call(?SERVER, {emit_to_all, EventName, ArgsList}).
+    gen_server:cast(?SERVER, {publish_to_all, MessageBin}).
 
 add_session(Pid) ->
     gen_server:call(?SERVER, {add_session, Pid}).
@@ -75,12 +72,6 @@ handle_call({add_session, Pid}, _From, State) ->
     {reply, ok, State#state{sessions = sets:add_element(Pid, State#state.sessions)}};
 handle_call({remove_session, Pid}, _From, State) ->
     {reply, ok, State#state{sessions = sets:del_element(Pid, State#state.sessions)}};
-handle_call({publish_to_all, MessageBin}, _From, State) ->
-    sets:fold(fun(Pid, AccIn) ->
-                      engineio_session:send_message(Pid, MessageBin),
-                      AccIn
-              end, notused, State#state.sessions),
-    {reply, ok, State};
 handle_call(_Request, _From, State) ->
     {reply, ok, State}.
 
@@ -94,6 +85,12 @@ handle_call(_Request, _From, State) ->
 %%                                  {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
+handle_cast({publish_to_all, MessageBin}, State) ->
+    sets:fold(fun(Pid, AccIn) ->
+                      engineio_session:send_message(Pid, MessageBin),
+                      AccIn
+              end, notused, State#state.sessions),
+    {reply, ok, State};
 handle_cast(_Msg, State) ->
     {noreply, State}.
 

@@ -1,6 +1,9 @@
 Websocket example
 =================
 
+This is a copy of Cowboy's websocket example, modified to act as a stress test
+on Cowboy doing a broadcast-to-all-connections type of "chat server".
+
 To try this example, you need GNU `make` and `git` in your PATH.
 
 To build the example, run the following command:
