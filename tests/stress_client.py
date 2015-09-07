@@ -3,6 +3,8 @@
 # Requires: sudo pip install websocket-client
 
 import websocket
+import random
+import string
 import sys
 import thread
 import time
@@ -11,6 +13,9 @@ sending = 0
 expecting = 0
 received = 0
 start_time = 0
+
+#message = "PING"
+message = ''.join(random.choice(string.ascii_uppercase + string.digits) for _ in range(1024))
 
 def on_message(ws, message):
     global expecting
@@ -34,7 +39,7 @@ def on_open(ws):
         global start_time
         start_time = int(round(time.time() * 1000))
         for i in range(sending):
-            ws.send("PING")
+            ws.send(message)
         print("thread terminating...")
     thread.start_new_thread(run, ())
 
@@ -45,7 +50,7 @@ if __name__ == "__main__":
     expecting = int(sys.argv[2])
     print "Sending %d, expecting %d" % (sending, expecting)
     websocket.enableTrace(True)
-    ws = websocket.WebSocketApp("ws://localhost:8080/websocket",
+    ws = websocket.WebSocketApp("ws://localhost:8080/",
                                 on_message = on_message,
                                 on_error = on_error,
                                 on_close = on_close)
