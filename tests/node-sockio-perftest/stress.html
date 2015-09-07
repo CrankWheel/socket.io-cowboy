@@ -22,7 +22,6 @@ function update_result() {
 }
 
 function stress() {
-    received_amount = 0;
     updater = setInterval(function() {
         if (received_amount > 0) {
             update_result();
@@ -36,7 +35,7 @@ function stress() {
     document.getElementById('sent').innerHTML = "Sent " + messages + " messages in " + (new Date().getTime() - start) + "ms";
 }
 
-$(function() { stress(); });
+window.setTimeout(stress, 5000);
     </script>
   </head>
   <body>

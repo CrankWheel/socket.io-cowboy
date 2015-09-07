@@ -6,7 +6,7 @@ app.get('/', function(req, res){
   res.sendFile(__dirname + '/index.html');
 });
 
-app.get('/stress.html', function(req, res){
+app.get('/nodesock-stress.html', function(req, res){
   res.sendFile(__dirname + '/stress.html');
 });
 

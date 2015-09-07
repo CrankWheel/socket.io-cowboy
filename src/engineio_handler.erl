@@ -91,7 +91,8 @@ info(Info, Req, HttpState) ->
     ?DBGPRINT(Info),
     {stop, Req, HttpState}.
 
-% TODO(joi): We should perhapse end the session if we get Reason = {{error, closed}}.
+% TODO(joi): We should perhaps end the session if we get Reason = {{error, closed}},
+% i.e. if the long-polling HTTP connection is closed unexpectedly.
 terminate(_Reason, _Req, _HttpState = #http_state{heartbeat_tref = HeartbeatTRef, pid = Pid}) ->
     % Invariant: We are an HTTP handler (loop or regular).
     ?DBGPRINT({_Reason}),
