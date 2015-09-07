@@ -14,37 +14,33 @@ var socket = eio('ws://localhost:8080');
 socket.on('open', function() {
     socket.on('message', function(){
         received_amount++;
-        if (received_amount >= messages) {
-            clearInterval(updater);
-            update_result();
-        }
     });
 
     socket.on('close', function() {
     });
 
-    function update_result() {
-        var result = document.getElementById('result');
-        result.innerHTML = "Received " + received_amount +  " messages in " + (new Date().getTime() - start) + "ms";
-    }
-
-    function stress() {
-        received_amount = 0;
-        updater = setInterval(function() {
-            if (received_amount > 0) {
-                update_result();
-            }
-        }, 1000);
-        messages = parseInt(document.getElementById('messages').value);
-        start = new Date().getTime();
-        for (var i=0; i < messages; i++) {
-            socket.send("PING");
-        };
-        document.getElementById('sent').innerHTML = "Sent " + messages + " messages in " + (new Date().getTime() - start) + "ms";
-    }
-
-    stress();
 });
+
+function update_result() {
+    var result = document.getElementById('result');
+    result.innerHTML = "Received " + received_amount +  " messages in " + (new Date().getTime() - start) + "ms";
+}
+
+function stress() {
+    updater = setInterval(function() {
+        if (received_amount > 0) {
+            update_result();
+        }
+    }, 1000);
+    messages = parseInt(document.getElementById('messages').value);
+    start = new Date().getTime();
+    for (var i=0; i < messages; i++) {
+        socket.send("1964613669448345929814214950912374650204767788175962217513726972697509501512460001750302393451653921929426852020294758435829173139325044514040175272181791753087259116191611945977904804910710670911974410590305097218344373147199838323836587732090787370659082172051778748439019176087905685774916721211671937454098133099104752630113081791763245724286908189617231239372864398037321128479751345080718418863437529010176264685861515257961093741108790870588431814769934376386611461320190060571683142632594832672492721413465382565496527017184033183628313377426081387143435183417341070295726539454100614480578579472578280681153938009100583599780145331964613669448345929814214950912374650204767788175962217513726972697509501512460001750302393451653921929426852020294758435829173139325044514040175272181791753087259116191611945977904804910710670911974410590305097218344373147199838323836587732090787370659082172051778748439019176087905685774916721211671937454098133099104752630113081791763245724286908189617231239372864398037321128479XYZ19646136694483459");
+    };
+    document.getElementById('sent').innerHTML = "Sent " + messages + " messages in " + (new Date().getTime() - start) + "ms";
+}
+
+window.setTimeout(stress, 5000);
     </script>
   </head>
   <body>

@@ -96,12 +96,7 @@ send_message(Pid, Message) when is_binary(Message) ->
     gen_server:cast(Pid, {send, {message, Message}}).
 
 recv(Pid, Messages) when is_list(Messages) ->
-    case safe_call(Pid, {recv, Messages}, infinity) of
-        {error, noproc} ->
-            noproc;
-        Result ->
-            Result
-    end.
+    gen_server:cast(Pid, {recv, Messages}).
 
 refresh(Pid) ->
     gen_server:cast(Pid, {refresh}).
@@ -170,10 +165,6 @@ handle_call({poll}, _From, State = #state{messages = Messages}) ->
     State1 = refresh_session_timeout(State),
     {reply, lists:reverse(Messages), State1#state{messages = [], caller = undefined}};
 
-handle_call({recv, Messages}, _From, State) ->
-    State1 = refresh_session_timeout(State),
-    process_messages(Messages, State1);
-
 handle_call({unsub_caller, _Caller}, _From, State = #state{caller = undefined}) ->
     {reply, ok, State};
 
@@ -212,6 +203,10 @@ handle_cast({send, Message}, State = #state{messages = Messages, caller = Caller
     end,
     ?DBGPRINT({send, Message}),
     {noreply, State#state{messages = [Message|Messages]}};
+
+handle_cast({recv, Messages}, State) ->
+    State1 = refresh_session_timeout(State),
+    process_messages(Messages, State1);
 
 handle_cast({refresh}, State) ->
     {noreply, refresh_session_timeout(State)};
@@ -273,12 +268,12 @@ refresh_session_timeout(State = #state{session_timeout = Timeout, session_timeou
     State#state{session_timeout_tref = NewTRef}.
 
 process_messages([], _State) ->
-    {reply, ok, _State};
+    {noreply, _State};
 
 process_messages([Message|Rest], State = #state{id = SessionId, callback = Callback, session_state = SessionState}) ->
     case Message of
         disconnect ->
-            {stop, normal, ok, State};
+            {stop, normal, State};
         {ping, Data} ->
             send(self(), {pong, Data}),
             process_messages(Rest, State);
@@ -287,7 +282,7 @@ process_messages([Message|Rest], State = #state{id = SessionId, callback = Callb
                 {ok, NewSessionState} ->
                     process_messages(Rest, State#state{session_state = NewSessionState});
                 {disconnect, NewSessionState} ->
-                    {stop, normal, ok, State#state{session_state = NewSessionState}}
+                    {stop, normal, State#state{session_state = NewSessionState}}
             end;
         _ ->
             %% Skip message
