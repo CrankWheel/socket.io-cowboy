@@ -11,7 +11,7 @@ var start;
 var updater;
 
 var host = window.document.location.host.replace(/:.*/, '');
-var ws = new WebSocket('ws://' + host + ':8080/websocket');
+var ws = new WebSocket('ws://' + host + ':8080/ws');
 
 ws.onmessage = function (event) {
     received_amount++;
