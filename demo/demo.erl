@@ -31,7 +31,7 @@ open(Pid, Sid, _Opts, _PeerAddress) ->
     demo_mgr:add_session(Pid),
     {ok, #session_state{}}.
 
-recv(Pid, Sid, {message, Message}, SessionState) ->
+recv(_Pid, _Sid, {message, Message}, SessionState) ->
     demo_mgr:publish_to_all(Message),
     {ok, SessionState}.
 

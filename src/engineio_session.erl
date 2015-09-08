@@ -122,7 +122,6 @@ start_link(SessionId, SessionTimeout, Callback, Opts, PeerAddress) ->
 
 %%--------------------------------------------------------------------
 init([SessionId, SessionTimeout, Callback, Opts, PeerAddress]) ->
-    ?DBGPRINT({SessionId, SessionTimeout, Callback, Opts, PeerAddress}),
     % TODO(joi): Shouldn't this be finished before returning?
     self() ! register_in_ets,
     TRef = erlang:send_after(SessionTimeout, self(), session_timeout),
@@ -156,7 +155,6 @@ handle_call({pull, Pid, Wait}, _From,  State = #state{messages = Messages, calle
     end;
 
 handle_call({pull, _Pid, _}, _From,  State) ->
-    ?DBGPRINT(State),
     {reply, session_in_use, State};
 
 handle_call({poll}, _From, State = #state{messages = [], transport = polling}) ->
@@ -201,7 +199,6 @@ handle_cast({send, Message}, State = #state{messages = Messages, caller = Caller
         _ ->
             Caller ! {message_arrived, self()}
     end,
-    ?DBGPRINT({send, Message}),
     {noreply, State#state{messages = [Message|Messages]}};
 
 handle_cast({recv, Messages}, State) ->
@@ -286,7 +283,7 @@ process_messages([Message|Rest], State = #state{id = SessionId, callback = Callb
             end;
         _ ->
             %% Skip message
-            ?DBGPRINT({skip_message, Message, Rest, State}),
+            lager:warn("Skipping message ~s, ~s, ~s", [Message, Rest, State]),
             process_messages(Rest, State)
     end.
 

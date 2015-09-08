@@ -1,20 +1,21 @@
 {application, engineio, [
-	{description, "Engine.IO for cowboy."},
-	{vsn, "0.1.0"},
-	{modules, []},
-	{registered, [engineio_sup]},
-	{applications, [
-		kernel,
-		stdlib,
-		crypto,
-		asn1,
-		public_key,
-		ssl,
-		ranch,
-		cowlib,
-		cowboy,
-		mnesia
-	]},
-	{mod, {engineio, []}},
-	{env, []}
+    {description, "Engine.IO for cowboy."},
+    {vsn, "0.1.0"},
+    {modules, []},
+    {registered, [engineio_sup]},
+    {applications, [
+        kernel,
+        stdlib,
+        crypto,
+        asn1,
+        public_key,
+        ssl,
+        ranch,
+        cowlib,
+        cowboy,
+        mnesia,
+        lager
+    ]},
+    {mod, {engineio, []}},
+    {env, []}
 ]}.

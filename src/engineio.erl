@@ -27,6 +27,7 @@ start() ->
     ok = application:start(cowboy),
 
     ok = mnesia:start(),
+    lager:start(),
 
     application:start(engineio).
 
