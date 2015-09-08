@@ -41,7 +41,7 @@
     registered,
     opts,
     session_state,
-    peer_address,
+    original_request,
     transport,
     message_count}).
 
@@ -62,8 +62,8 @@ init_mnesia() ->
         [{index, [pid]}, {attributes, record_info(fields, ?SESSION_PID_TABLE)}],
         ram_copies).
 
-create(SessionId, SessionTimeout, Callback, Opts, PeerAddress) ->
-    {ok, Pid} = engineio_session_sup:start_child(SessionId, SessionTimeout, Callback, Opts, PeerAddress),
+create(SessionId, SessionTimeout, Callback, Opts, OriginalRequest) ->
+    {ok, Pid} = engineio_session_sup:start_child(SessionId, SessionTimeout, Callback, Opts, OriginalRequest),
     Pid.
 
 find(SessionId) ->
@@ -115,15 +115,15 @@ upgrade_transport(Pid, Transport) ->
 transport(Pid) ->
     gen_server:call(Pid, {transport}).
 %%--------------------------------------------------------------------
-start_link(SessionId, SessionTimeout, Callback, Opts, PeerAddress) ->
-    gen_server:start_link(?MODULE, [SessionId, SessionTimeout, Callback, Opts, PeerAddress], []).
+start_link(SessionId, SessionTimeout, Callback, Opts, OriginalRequest) ->
+    gen_server:start_link(?MODULE, [SessionId, SessionTimeout, Callback, Opts, OriginalRequest], []).
 
 %%%===================================================================
 %%% gen_server callbacks
 %%%===================================================================
 
 %%--------------------------------------------------------------------
-init([SessionId, SessionTimeout, Callback, Opts, PeerAddress]) ->
+init([SessionId, SessionTimeout, Callback, Opts, OriginalRequest]) ->
     % TODO(joi): Shouldn't this be finished before returning?
     self() ! register_in_ets,
     TRef = erlang:send_after(SessionTimeout, self(), session_timeout),
@@ -135,7 +135,7 @@ init([SessionId, SessionTimeout, Callback, Opts, PeerAddress]) ->
         opts = Opts,
         session_timeout_tref = TRef,
         session_timeout = SessionTimeout,
-        peer_address = PeerAddress,
+        original_request = OriginalRequest,
         transport = polling,
         message_count = 0
     },
@@ -225,10 +225,10 @@ handle_info(session_timeout, State) ->
     {stop, normal, State};
 
 handle_info(register_in_ets,
-    State = #state{id = SessionId, registered = false, callback = Callback, opts = Opts, peer_address = PeerAddress}) ->
+    State = #state{id = SessionId, registered = false, callback = Callback, opts = Opts, original_request = OriginalRequest}) ->
     case mnesia:dirty_write(#?SESSION_PID_TABLE{sid = SessionId, pid = self()}) of
         ok ->
-            case Callback:open(self(), SessionId, Opts, PeerAddress) of
+            case Callback:open(self(), SessionId, Opts, OriginalRequest) of
                 {ok, SessionState} ->
                     {noreply, State#state{registered = true, session_state = SessionState}};
                 disconnect ->

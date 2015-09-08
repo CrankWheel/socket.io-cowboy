@@ -27,7 +27,7 @@ start() ->
         {port, 8080}], [{env, [{dispatch, Dispatch}]}]).
 
 %% ---- Handlers
-open(Pid, Sid, _Opts, _PeerAddress) ->
+open(Pid, Sid, _Opts, _OriginalRequest) ->
     error_logger:info_msg("open ~p ~p~n", [Pid, Sid]),
     demo_mgr:add_session(Pid),
     {ok, #session_state{}}.

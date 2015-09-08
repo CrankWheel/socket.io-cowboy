@@ -30,5 +30,5 @@ init([]) ->
           [{undefined, {engineio_session, start_link, []},
             temporary, 5000, worker, [engineio_session]}]}}.
 
-start_child(SessionId, SessionTimeout, Callback, Opts, PeerAddress) ->
-   supervisor:start_child(?MODULE, [SessionId, SessionTimeout, Callback, Opts, PeerAddress]).
+start_child(SessionId, SessionTimeout, Callback, Opts, OriginalRequest) ->
+   supervisor:start_child(?MODULE, [SessionId, SessionTimeout, Callback, Opts, OriginalRequest]).

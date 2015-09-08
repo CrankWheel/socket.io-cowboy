@@ -59,9 +59,7 @@ create_session(Req, HttpState = #http_state{jsonp = JsonP, config = #config{
     enable_websockets = EnableWebsockets
 }}) ->
     Sid = uuids:new(),
-    PeerAddress = cowboy_req:peer(Req),
-
-    _Pid = engineio_session:create(Sid, SessionTimeout, Callback, Opts, PeerAddress),
+    _Pid = engineio_session:create(Sid, SessionTimeout, Callback, Opts, Req),
 
     UpgradeList = case EnableWebsockets of
         true -> [<<"websocket">>];
