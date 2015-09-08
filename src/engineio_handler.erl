@@ -28,7 +28,7 @@
 % that the server will simply freak out.
 -define(MAXIMUM_BODY_BYTES, 24*1024*1024).
 
--record(http_state, {config, sid, heartbeat_tref, pid, jsonp, dbgmethod, dbgurl}).
+-record(http_state, {config, sid, heartbeat_tref, pid, jsonp}).
 -record(websocket_state, {config, pid, messages}).
 
 init(Req, [Config]) ->
@@ -92,8 +92,23 @@ create_session(Req, HttpState = #http_state{jsonp = JsonP, config = #config{
 % Invariant in all of these: We are an HTTP loop handler.
 info({timeout, TRef, {?MODULE, Pid}}, Req, HttpState = #http_state{heartbeat_tref = TRef}) ->
     safe_poll(Req, HttpState#http_state{heartbeat_tref = undefined}, Pid, false);
-info({message_arrived, Pid}, Req, HttpState) ->
-    safe_poll(Req, HttpState, Pid, true);
+info({message_arrived, Pid}, Req, HttpState = #http_state{pid = StatePid}) ->
+    case Pid of
+        StatePid ->
+            % This message_arrived was meant for us, so poll and return data.
+            % No other handler should be trying to poll this session, so it
+            % should be fine to not wait if the message list is empty.
+            safe_poll(Req, HttpState, Pid, false);
+        _ ->
+            % We can receive message_arrived messages that were meant for a loop
+            % handler that previously ran in the same process as we are. The way
+            % this happens is that the engineio_session sends the asynchronous
+            % message_arrived message just before the previous loop handler
+            % calls unsub_caller, so it gets added to this process's message
+            % queue even though the handler that was planning to handle it is
+            % gone.
+            {ok, Req, HttpState}
+    end;
 info(Info, Req, HttpState) ->
     lager:info("Unexpected info message ~s", [Info]),
     {stop, Req, HttpState}.
@@ -199,7 +214,7 @@ handle_polling(Req, Sid, Config, JsonP) ->
                             {ok, reply_messages(Req, [], true, JsonP), #http_state{config = Config, sid = Sid, pid = Pid, jsonp = JsonP}};
                         _ ->
                             TRef = erlang:start_timer(Config#config.heartbeat, self(), {?MODULE, Pid}),
-                            {cowboy_loop, Req, #http_state{config = Config, sid = Sid, heartbeat_tref = TRef, pid = Pid, jsonp = JsonP, dbgmethod = Method, dbgurl = cowboy_req:path(Req)}}
+                            {cowboy_loop, Req, #http_state{config = Config, sid = Sid, heartbeat_tref = TRef, pid = Pid, jsonp = JsonP}}
                     end;
                 Messages ->
                     Req1 = reply_messages(Req, Messages, false, JsonP),

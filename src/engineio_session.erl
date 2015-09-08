@@ -202,7 +202,10 @@ handle_cast({send, Message}, State = #state{messages = Messages, caller = Caller
         _ ->
             Caller ! {message_arrived, self()}
     end,
-    {noreply, State#state{messages = [Message|Messages]}};
+    % We can unregister the caller right away since it will simply poll and then
+    % die immediately after that. No need to send thousands of message_arrived messages
+    % in a row, just one is enough once there is data available.
+    {noreply, State#state{messages = [Message|Messages], caller = undefined}};
 
 handle_cast({recv, Messages}, State = #state{message_count = MessageCount}) ->
     State1 = State#state{message_count = MessageCount + length(Messages)},
@@ -247,7 +250,7 @@ handle_info(_Info, State) ->
     {noreply, State}.
 
 terminate(_Reason, _State = #state{id = SessionId, registered = Registered, callback = Callback, session_state = SessionState, message_count = MessageCount}) ->
-    ?DBGPRINT({session_terminating, MessageCount, self()}),
+    lager:debug("Session ~s terminating, message count ~s", [self(), MessageCount]),
     mnesia:dirty_delete(?SESSION_PID_TABLE, SessionId),
     case Registered of
         true ->
