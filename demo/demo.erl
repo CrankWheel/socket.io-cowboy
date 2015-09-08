@@ -11,7 +11,7 @@ start() ->
 
     Dispatch = cowboy_router:compile([
         {'_', [
-            {"/engine.io/[...]", engineio_handler, [engineio_session:configure([{heartbeat, 25000},
+            {"/engine.io/[...]", engineio_handler, [engineio_session:configure([{heartbeat, 8000},
                 {heartbeat_timeout, 15000},
                 {session_timeout, 60000},
                 {callback, ?MODULE},
