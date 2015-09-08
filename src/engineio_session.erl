@@ -42,7 +42,8 @@
     opts,
     session_state,
     peer_address,
-    transport}).
+    transport,
+    message_count}).
 
 %%%===================================================================
 %%% API
@@ -52,7 +53,8 @@ configure(Opts) ->
             heartbeat_timeout = proplists:get_value(heartbeat_timeout, Opts, 30000),
             session_timeout = proplists:get_value(session_timeout, Opts, 30000),
             callback = proplists:get_value(callback, Opts),
-            opts = proplists:get_value(opts, Opts, undefined)
+            opts = proplists:get_value(opts, Opts, undefined),
+            enable_websockets = proplists:get_value(enable_websockets, Opts, true)
            }.
 
 init_mnesia() ->
@@ -134,7 +136,8 @@ init([SessionId, SessionTimeout, Callback, Opts, PeerAddress]) ->
         session_timeout_tref = TRef,
         session_timeout = SessionTimeout,
         peer_address = PeerAddress,
-        transport = polling
+        transport = polling,
+        message_count = 0
     },
     {ok, State}.
 
@@ -201,9 +204,10 @@ handle_cast({send, Message}, State = #state{messages = Messages, caller = Caller
     end,
     {noreply, State#state{messages = [Message|Messages]}};
 
-handle_cast({recv, Messages}, State) ->
-    State1 = refresh_session_timeout(State),
-    process_messages(Messages, State1);
+handle_cast({recv, Messages}, State = #state{message_count = MessageCount}) ->
+    State1 = State#state{message_count = MessageCount + length(Messages)},
+    State2 = refresh_session_timeout(State1),
+    process_messages(Messages, State2);
 
 handle_cast({refresh}, State) ->
     {noreply, refresh_session_timeout(State)};
@@ -242,7 +246,8 @@ handle_info(Info, State = #state{id = Id, registered = true, callback = Callback
 handle_info(_Info, State) ->
     {noreply, State}.
 
-terminate(_Reason, _State = #state{id = SessionId, registered = Registered, callback = Callback, session_state = SessionState}) ->
+terminate(_Reason, _State = #state{id = SessionId, registered = Registered, callback = Callback, session_state = SessionState, message_count = MessageCount}) ->
+    ?DBGPRINT({session_terminating, MessageCount, self()}),
     mnesia:dirty_delete(?SESSION_PID_TABLE, SessionId),
     case Registered of
         true ->

@@ -55,17 +55,22 @@ create_session(Req, HttpState = #http_state{jsonp = JsonP, config = #config{
     heartbeat_timeout = HeartbeatTimeout,
     session_timeout = SessionTimeout,
     opts = Opts,
-    callback = Callback
+    callback = Callback,
+    enable_websockets = EnableWebsockets
 }}) ->
     Sid = uuids:new(),
     PeerAddress = cowboy_req:peer(Req),
 
     _Pid = engineio_session:create(Sid, SessionTimeout, Callback, Opts, PeerAddress),
 
+    UpgradeList = case EnableWebsockets of
+        true -> [<<"websocket">>];
+        false -> []
+    end,
     Result = jiffy:encode({[
         {<<"sid">>, Sid},
         {<<"pingInterval">>, HeartbeatInterval}, {<<"pingTimeout">>, HeartbeatTimeout},
-        {<<"upgrades">>, [<<"websocket">>]}
+        {<<"upgrades">>, UpgradeList}
     ]}),
 
     case JsonP of
@@ -204,9 +209,9 @@ handle_polling(Req, Sid, Config, JsonP) ->
             case get_request_data(Req, JsonP) of
                 {ok, Data2, Req2} ->
                     Messages = case catch(engineio_data_protocol:decode_v1(Data2)) of
-                                   {'EXIT', Reason} ->
+                                   {'EXIT', _Reason} ->
                                        [];
-                                   {error, Reason} ->
+                                   {error, _Reason} ->
                                        [];
                                    Msgs ->
                                        Msgs
