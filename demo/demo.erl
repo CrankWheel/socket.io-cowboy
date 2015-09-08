@@ -12,9 +12,10 @@ start() ->
     Dispatch = cowboy_router:compile([
         {'_', [
             {"/engine.io/[...]", engineio_handler, [engineio_session:configure([{heartbeat, 25000},
-                {heartbeat_timeout, 60000},
+                {heartbeat_timeout, 15000},
                 {session_timeout, 60000},
-                {callback, ?MODULE}])]
+                {callback, ?MODULE},
+                {enable_websockets, false}])]
             },
             {"/[...]", cowboy_static, {dir, <<"./priv">>, [{mimetypes, cow_mimetypes, web}]}}
         ]}
@@ -31,7 +32,7 @@ open(Pid, Sid, _Opts, _PeerAddress) ->
     demo_mgr:add_session(Pid),
     {ok, #session_state{}}.
 
-recv(Pid, Sid, {message, Message}, SessionState) ->
+recv(_Pid, _Sid, {message, Message}, SessionState) ->
     demo_mgr:publish_to_all(Message),
     {ok, SessionState}.
 

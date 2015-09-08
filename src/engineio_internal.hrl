@@ -16,9 +16,10 @@
                  heartbeat_timeout,
                  session_timeout,
                  callback,
-                 opts
+                 opts,
+                 enable_websockets
                 }).
 
 % Debugging aid. Never leave these in the code when checking in.
-% -define(DBGPRINT(Var), io:format("DEBUG: ~p:~p - ~p~n~n ~p~n~n", [?MODULE, ?LINE, ??Var, Var])).
--define(DBGPRINT(Var), ok).
+-define(DBGPRINT(Var), io:format("DEBUG: ~p:~p - ~p~n~n ~p~n~n", [?MODULE, ?LINE, ??Var, Var])).
+%-define(DBGPRINT(Var), ok).

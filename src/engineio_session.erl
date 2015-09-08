@@ -42,7 +42,8 @@
     opts,
     session_state,
     peer_address,
-    transport}).
+    transport,
+    message_count}).
 
 %%%===================================================================
 %%% API
@@ -52,7 +53,8 @@ configure(Opts) ->
             heartbeat_timeout = proplists:get_value(heartbeat_timeout, Opts, 30000),
             session_timeout = proplists:get_value(session_timeout, Opts, 30000),
             callback = proplists:get_value(callback, Opts),
-            opts = proplists:get_value(opts, Opts, undefined)
+            opts = proplists:get_value(opts, Opts, undefined),
+            enable_websockets = proplists:get_value(enable_websockets, Opts, true)
            }.
 
 init_mnesia() ->
@@ -122,7 +124,6 @@ start_link(SessionId, SessionTimeout, Callback, Opts, PeerAddress) ->
 
 %%--------------------------------------------------------------------
 init([SessionId, SessionTimeout, Callback, Opts, PeerAddress]) ->
-    ?DBGPRINT({SessionId, SessionTimeout, Callback, Opts, PeerAddress}),
     % TODO(joi): Shouldn't this be finished before returning?
     self() ! register_in_ets,
     TRef = erlang:send_after(SessionTimeout, self(), session_timeout),
@@ -135,7 +136,8 @@ init([SessionId, SessionTimeout, Callback, Opts, PeerAddress]) ->
         session_timeout_tref = TRef,
         session_timeout = SessionTimeout,
         peer_address = PeerAddress,
-        transport = polling
+        transport = polling,
+        message_count = 0
     },
     {ok, State}.
 
@@ -156,7 +158,6 @@ handle_call({pull, Pid, Wait}, _From,  State = #state{messages = Messages, calle
     end;
 
 handle_call({pull, _Pid, _}, _From,  State) ->
-    ?DBGPRINT(State),
     {reply, session_in_use, State};
 
 handle_call({poll}, _From, State = #state{messages = [], transport = polling}) ->
@@ -201,12 +202,15 @@ handle_cast({send, Message}, State = #state{messages = Messages, caller = Caller
         _ ->
             Caller ! {message_arrived, self()}
     end,
-    ?DBGPRINT({send, Message}),
-    {noreply, State#state{messages = [Message|Messages]}};
+    % We can unregister the caller right away since it will simply poll and then
+    % die immediately after that. No need to send thousands of message_arrived messages
+    % in a row, just one is enough once there is data available.
+    {noreply, State#state{messages = [Message|Messages], caller = undefined}};
 
-handle_cast({recv, Messages}, State) ->
-    State1 = refresh_session_timeout(State),
-    process_messages(Messages, State1);
+handle_cast({recv, Messages}, State = #state{message_count = MessageCount}) ->
+    State1 = State#state{message_count = MessageCount + length(Messages)},
+    State2 = refresh_session_timeout(State1),
+    process_messages(Messages, State2);
 
 handle_cast({refresh}, State) ->
     {noreply, refresh_session_timeout(State)};
@@ -245,7 +249,8 @@ handle_info(Info, State = #state{id = Id, registered = true, callback = Callback
 handle_info(_Info, State) ->
     {noreply, State}.
 
-terminate(_Reason, _State = #state{id = SessionId, registered = Registered, callback = Callback, session_state = SessionState}) ->
+terminate(_Reason, _State = #state{id = SessionId, registered = Registered, callback = Callback, session_state = SessionState, message_count = MessageCount}) ->
+    lager:debug("Session ~s terminating, message count ~s", [self(), MessageCount]),
     mnesia:dirty_delete(?SESSION_PID_TABLE, SessionId),
     case Registered of
         true ->
@@ -286,7 +291,7 @@ process_messages([Message|Rest], State = #state{id = SessionId, callback = Callb
             end;
         _ ->
             %% Skip message
-            ?DBGPRINT({skip_message, Message, Rest, State}),
+            lager:warn("Skipping message ~s, ~s, ~s", [Message, Rest, State]),
             process_messages(Rest, State)
     end.
 
