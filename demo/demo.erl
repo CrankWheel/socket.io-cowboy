@@ -15,7 +15,7 @@ start() ->
                 {heartbeat_timeout, 15000},
                 {session_timeout, 60000},
                 {callback, ?MODULE},
-                {enable_websockets, true}])]
+                {enable_websockets, false}])]
             },
             {"/[...]", cowboy_static, {dir, <<"./priv">>, [{mimetypes, cow_mimetypes, web}]}}
         ]}

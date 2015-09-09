@@ -92,10 +92,19 @@ create_session(Req, HttpState = #http_state{jsonp = JsonP, config = #config{
 % Invariant in all of these: We are an HTTP loop handler.
 info({timeout, TRef, {?MODULE, Pid}}, Req, HttpState = #http_state{heartbeat_tref = TRef}) ->
     safe_poll(Req, HttpState#http_state{heartbeat_tref = undefined}, Pid, false);
-info({message_arrived, Pid}, Req, HttpState = #http_state{pid = StatePid}) ->
+info({message_arrived, Pid}, Req, HttpState = #http_state{pid = StatePid, heartbeat_tref = HeartbeatTRef}) ->
     case Pid of
         StatePid ->
             % This message_arrived was meant for us, so poll and return data.
+
+            % We don't want the timeout any more (since we will be exiting after polling).
+            case HeartbeatTRef of
+                undefined ->
+                    ok;
+                _ ->
+                    erlang:cancel_timer(HeartbeatTRef),
+                    ok
+            end,
             % No other handler should be trying to poll this session, so it
             % should be fine to not wait if the message list is empty.
             safe_poll(Req, HttpState, Pid, false);
@@ -113,9 +122,7 @@ info(Info, Req, HttpState) ->
     lager:info("Unexpected info message ~s", [Info]),
     {stop, Req, HttpState}.
 
-% TODO(joi): We should perhaps end the session if we get Reason = {{error, closed}},
-% i.e. if the long-polling HTTP connection is closed unexpectedly.
-terminate(_Reason, _Req, _HttpState = #http_state{heartbeat_tref = HeartbeatTRef, pid = Pid}) ->
+terminate(Reason, _Req, _HttpState = #http_state{heartbeat_tref = HeartbeatTRef, pid = Pid}) ->
     % Invariant: We are an HTTP handler (loop or regular).
     safe_unsub_caller(Pid, self()),
     case HeartbeatTRef of
@@ -123,6 +130,14 @@ terminate(_Reason, _Req, _HttpState = #http_state{heartbeat_tref = HeartbeatTRef
             ok;
         _ ->
             erlang:cancel_timer(HeartbeatTRef),
+            ok
+    end,
+    case Reason of
+        {error, closed} ->
+            % This indicates that the long-polling connection has been closed
+            % unexpectedly, which generally means that the client is gone.
+            engineio_session:disconnect(Pid);
+        _ ->
             ok
     end;
 terminate(_Reason, _Req, #websocket_state{pid = Pid}) ->
