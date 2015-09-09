@@ -81,7 +81,13 @@ create_session(Req, HttpState = #http_state{jsonp = JsonP, base64 = Base64, conf
 
     case JsonP of
         undefined ->
-            Result2 = encode_polling_xhr_packets_v1([<<$0, Result/binary>>], Base64);
+            Result2 = encode_polling_xhr_packets_v1([<<$0, Result/binary>>], Base64),
+            case Base64 of
+                true ->
+                    HttpHeaders = text_headers();
+                false ->
+                    HttpHeaders = stream_headers()
+            end;
         Num ->
             ResultLenBin = integer_to_binary(byte_size(Result) + 1),
             Rs = binary:replace(Result, <<"\"">>, <<"\\\"">>, [global]),
@@ -89,7 +95,7 @@ create_session(Req, HttpState = #http_state{jsonp = JsonP, base64 = Base64, conf
             HttpHeaders = javascript_headers()
     end,
 
-    Req1 = cowboy_req:reply(200, text_headers(), <<Result2/binary>>, Req),
+    Req1 = cowboy_req:reply(200, HttpHeaders, <<Result2/binary>>, Req),
     {ok, Req1, HttpState}.
 
 % Invariant in all of these: We are an HTTP loop handler.
