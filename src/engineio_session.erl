@@ -21,8 +21,8 @@
 -include("engineio_internal.hrl").
 
 %% API
--export([start_link/5, init_mnesia/0, configure/1, create/5, find/1, pull/2, pull_no_wait/2, poll/1, safe_poll/1, recv/2,
-         send_message/2, refresh/1, disconnect/1, unsub_caller/2, upgrade_transport/2, transport/1]).
+-export([start_link/6, init_mnesia/0, configure/1, create/6, find/1, pull/2, pull_no_wait/2, poll/1, safe_poll/1, recv/2,
+         send_message/2, refresh/1, disconnect/1, unsub_caller/2, upgrade_transport/2, transport/1, b64/1]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -43,7 +43,8 @@
     session_state,
     original_request,
     transport,
-    message_count}).
+    message_count,
+    base64}).
 
 %%%===================================================================
 %%% API
@@ -62,8 +63,8 @@ init_mnesia() ->
         [{index, [pid]}, {attributes, record_info(fields, ?SESSION_PID_TABLE)}],
         ram_copies).
 
-create(SessionId, SessionTimeout, Callback, Opts, OriginalRequest) ->
-    {ok, Pid} = engineio_session_sup:start_child(SessionId, SessionTimeout, Callback, Opts, OriginalRequest),
+create(SessionId, SessionTimeout, Callback, Opts, OriginalRequest, Base64) ->
+    {ok, Pid} = engineio_session_sup:start_child(SessionId, SessionTimeout, Callback, Opts, OriginalRequest, Base64),
     Pid.
 
 find(SessionId) ->
@@ -114,16 +115,19 @@ upgrade_transport(Pid, Transport) ->
 
 transport(Pid) ->
     gen_server:call(Pid, {transport}).
+
+b64(Pid) ->
+    gen_server:call(Pid, {base64}).
 %%--------------------------------------------------------------------
-start_link(SessionId, SessionTimeout, Callback, Opts, OriginalRequest) ->
-    gen_server:start_link(?MODULE, [SessionId, SessionTimeout, Callback, Opts, OriginalRequest], []).
+start_link(SessionId, SessionTimeout, Callback, Opts, OriginalRequest, Base64) ->
+    gen_server:start_link(?MODULE, [SessionId, SessionTimeout, Callback, Opts, OriginalRequest, Base64], []).
 
 %%%===================================================================
 %%% gen_server callbacks
 %%%===================================================================
 
 %%--------------------------------------------------------------------
-init([SessionId, SessionTimeout, Callback, Opts, OriginalRequest]) ->
+init([SessionId, SessionTimeout, Callback, Opts, OriginalRequest, Base64]) ->
     % TODO(joi): Shouldn't this be finished before returning?
     self() ! register_in_ets,
     TRef = erlang:send_after(SessionTimeout, self(), session_timeout),
@@ -137,7 +141,8 @@ init([SessionId, SessionTimeout, Callback, Opts, OriginalRequest]) ->
         session_timeout = SessionTimeout,
         original_request = OriginalRequest,
         transport = polling,
-        message_count = 0
+        message_count = 0,
+        base64 = Base64
     },
     {ok, State}.
 
@@ -191,6 +196,10 @@ handle_call({transport, Transport}, _From, State) ->
 handle_call({transport}, _From, State = #state{transport = Transport}) ->
     {reply, Transport, State};
 
+handle_call({base64}, _From, State = #state{base64 = Base64}) ->
+    {reply, Base64, State};
+
+
 handle_call(_Request, _From, State) ->
     Reply = ok,
     {reply, Reply, State}.
@@ -225,7 +234,7 @@ handle_info(session_timeout, State) ->
     {stop, normal, State};
 
 handle_info(register_in_ets,
-    State = #state{id = SessionId, registered = false, callback = Callback, opts = Opts, original_request = OriginalRequest}) ->
+    State = #state{id = SessionId, registered = false, callback = Callback, opts = Opts, original_request = OriginalRequest, base64 = Base64}) ->
     case mnesia:dirty_write(#?SESSION_PID_TABLE{sid = SessionId, pid = self()}) of
         ok ->
             case Callback:open(SessionId, Opts, OriginalRequest) of

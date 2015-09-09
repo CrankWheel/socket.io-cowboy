@@ -67,7 +67,7 @@ create_session(Req, HttpState = #http_state{jsonp = JsonP, base64 = Base64, conf
     enable_websockets = EnableWebsockets
 }}) ->
     Sid = uuids:new(),
-    _Pid = engineio_session:create(Sid, SessionTimeout, Callback, Opts, Req),
+    _Pid = engineio_session:create(Sid, SessionTimeout, Callback, Opts, Req, Base64),
 
     UpgradeList = case EnableWebsockets of
         true -> [<<"websocket">>];
@@ -81,8 +81,7 @@ create_session(Req, HttpState = #http_state{jsonp = JsonP, base64 = Base64, conf
 
     case JsonP of
         undefined ->
-            Result2 = encode_polling_xhr_packets_v1([<<0, Result/binary>>], Base64),
-            HttpHeaders = stream_headers();
+            Result2 = encode_polling_xhr_packets_v1([<<$0, Result/binary>>], Base64);
         Num ->
             ResultLenBin = integer_to_binary(byte_size(Result) + 1),
             Rs = binary:replace(Result, <<"\"">>, <<"\\\"">>, [global]),
@@ -90,7 +89,7 @@ create_session(Req, HttpState = #http_state{jsonp = JsonP, base64 = Base64, conf
             HttpHeaders = javascript_headers()
     end,
 
-    Req1 = cowboy_req:reply(200, HttpHeaders, <<Result2/binary>>, Req),
+    Req1 = cowboy_req:reply(200, text_headers(), <<Result2/binary>>, Req),
     {ok, Req1, HttpState}.
 
 % Invariant in all of these: We are an HTTP loop handler.
@@ -154,7 +153,13 @@ reply_messages(Req, Messages, SendNop, undefined, Base64) ->
             engineio_data_protocol:encode_v1(Messages)
     end,
     PacketListBin = encode_polling_xhr_packets_v1(PacketList, Base64),
-    cowboy_req:reply(200, stream_headers(), PacketListBin, Req);
+    case Base64 of
+        true ->
+            HttpHeaders = text_headers();
+        false ->
+            HttpHeaders = stream_headers()
+    end,
+    cowboy_req:reply(200, HttpHeaders, PacketListBin, Req);
 reply_messages(Req, Messages, SendNop, JsonP, _Base64) ->
     PacketList = case {SendNop, Messages} of
         {true, []} ->
@@ -178,11 +183,12 @@ safe_unsub_caller(Pid, Caller) ->
             error
     end.
 
-safe_poll(Req, HttpState = #http_state{jsonp = JsonP, base64 = Base64}, Pid, WaitIfEmpty) ->
+safe_poll(Req, HttpState = #http_state{jsonp = JsonP}, Pid, WaitIfEmpty) ->
     % INVARIANT: We are an HTTP loop handler.
     try
         Messages = engineio_session:poll(Pid),
         Transport = engineio_session:transport(Pid),
+        Base64 = engineio_session:b64(Pid),
         case {Transport, WaitIfEmpty, Messages} of
             {websocket, _, _} ->
                 % Our transport has been switched to websocket, so we flush
@@ -365,9 +371,8 @@ encode_polling_xhr_packets_v1(PacketList, Base64) ->
             end, <<>>, PacketList);
         true ->
             lists:foldl(fun(Packet, AccIn) ->
-                PacketLen = [list_to_integer([D]) || D <- integer_to_list(byte_size(Packet))],
-                PacketLenStr = list_to_binary(io_lib:format("~p", [PacketLen])),
-                <<AccIn/binary, PacketLenStr/binary, <<":">>/binary, Packet/binary>>
+                PacketLenStr = list_to_binary(io_lib:format("~p", [byte_size(Packet)])),
+                <<AccIn/binary, PacketLenStr/binary, $:, Packet/binary>>
             end, <<>>, PacketList)
     end.
 
