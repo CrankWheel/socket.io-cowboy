@@ -26,6 +26,8 @@
 % Our decoder currently doesn't support streaming, so we need to read in the
 % entire POST body when a polling transport is used. Read up to 24 MB, above
 % that the server will simply freak out.
+%
+% TODO(joi): Support streaming decodes, and use below.
 -define(MAXIMUM_BODY_BYTES, 24*1024*1024).
 
 -record(http_state, {config, sid, heartbeat_tref, pid, jsonp}).

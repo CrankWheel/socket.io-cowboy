@@ -1,8 +1,8 @@
 -module(demo).
 
--export([start/0, open/4, recv/4, handle_info/4, close/3]).
+-export([start/0, open/3, recv/2, handle_info/2, close/1]).
 
--record(session_state, {}).
+-record(session_state, {sid}).
 
 start() ->
     ok = mnesia:start(),
@@ -15,7 +15,7 @@ start() ->
                 {heartbeat_timeout, 15000},
                 {session_timeout, 60000},
                 {callback, ?MODULE},
-                {enable_websockets, false}])]
+                {enable_websockets, true}])]
             },
             {"/[...]", cowboy_static, {dir, <<"./priv">>, [{mimetypes, cow_mimetypes, web}]}}
         ]}
@@ -27,19 +27,19 @@ start() ->
         {port, 8080}], [{env, [{dispatch, Dispatch}]}]).
 
 %% ---- Handlers
-open(Pid, Sid, _Opts, _OriginalRequest) ->
-    error_logger:info_msg("open ~p ~p~n", [Pid, Sid]),
-    demo_mgr:add_session(Pid),
+open(Sid, _Opts, _OriginalRequest) ->
+    error_logger:info_msg("open ~p ~p~n", [self(), Sid]),
+    demo_mgr:add_session(self()),
     {ok, #session_state{}}.
 
-recv(_Pid, _Sid, {message, Message}, SessionState) ->
+recv({message, Message}, SessionState) ->
     demo_mgr:publish_to_all(Message),
     {ok, SessionState}.
 
-handle_info(_Pid, _Sid, _Info, SessionState = #session_state{}) ->
+handle_info(_Info, SessionState) ->
     {ok, SessionState}.
 
-close(Pid, Sid, _SessionState = #session_state{}) ->
-    error_logger:info_msg("close ~p ~p~n", [Pid, Sid]),
-    demo_mgr:remove_session(Pid),
+close(_SessionState = #session_state{sid = Sid}) ->
+    error_logger:info_msg("close ~p ~p~n", [self(), Sid]),
+    demo_mgr:remove_session(self()),
     ok.

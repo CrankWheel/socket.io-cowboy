@@ -228,7 +228,7 @@ handle_info(register_in_ets,
     State = #state{id = SessionId, registered = false, callback = Callback, opts = Opts, original_request = OriginalRequest}) ->
     case mnesia:dirty_write(#?SESSION_PID_TABLE{sid = SessionId, pid = self()}) of
         ok ->
-            case Callback:open(self(), SessionId, Opts, OriginalRequest) of
+            case Callback:open(SessionId, Opts, OriginalRequest) of
                 {ok, SessionState} ->
                     {noreply, State#state{registered = true, session_state = SessionState}};
                 disconnect ->
@@ -239,7 +239,7 @@ handle_info(register_in_ets,
     end;
 
 handle_info(Info, State = #state{id = Id, registered = true, callback = Callback, session_state = SessionState}) ->
-    case Callback:handle_info(self(), Id, Info, SessionState) of
+    case Callback:handle_info(Info, SessionState) of
         {ok, NewSessionState} ->
             {noreply, State#state{session_state = NewSessionState}};
         {disconnect, NewSessionState} ->
@@ -254,7 +254,7 @@ terminate(_Reason, _State = #state{id = SessionId, registered = Registered, call
     mnesia:dirty_delete(?SESSION_PID_TABLE, SessionId),
     case Registered of
         true ->
-            Callback:close(self(), SessionId, SessionState),
+            Callback:close(SessionState),
             ok;
         _ ->
             ok
@@ -283,7 +283,7 @@ process_messages([Message|Rest], State = #state{id = SessionId, callback = Callb
             send(self(), {pong, Data}),
             process_messages(Rest, State);
         {message, MessageBin} ->
-            case Callback:recv(self(), SessionId, {message, MessageBin}, SessionState) of
+            case Callback:recv({message, MessageBin}, SessionState) of
                 {ok, NewSessionState} ->
                     process_messages(Rest, State#state{session_state = NewSessionState});
                 {disconnect, NewSessionState} ->
