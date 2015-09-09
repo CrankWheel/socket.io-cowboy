@@ -11,11 +11,11 @@ start() ->
 
     Dispatch = cowboy_router:compile([
         {'_', [
-            {"/engine.io/[...]", engineio_handler, [engineio_session:configure([{heartbeat, 8000},
-                {heartbeat_timeout, 15000},
-                {session_timeout, 60000},
+            {"/engine.io/[...]", engineio_handler, [engineio_session:configure([{heartbeat, 5000},
+                {heartbeat_timeout, 10000},
+                {session_timeout, 10000},
                 {callback, ?MODULE},
-                {enable_websockets, false}])]
+                {enable_websockets, true}])]
             },
             {"/[...]", cowboy_static, {dir, <<"./priv">>, [{mimetypes, cow_mimetypes, web}]}}
         ]}
