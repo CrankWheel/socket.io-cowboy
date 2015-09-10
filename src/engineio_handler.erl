@@ -366,6 +366,8 @@ get_request_data(Req, JsonP) ->
     end.
 
 encode_polling_xhr_packets_v1(PacketList) ->
+    % TODO(joi): I'm pretty sure we could optimize by using an iolist rather
+    % than building an increasingly-larger binary...
     lists:foldl(fun(Packet, AccIn) ->
         PacketLen = [list_to_integer([D]) || D <- integer_to_list(byte_size(Packet))],
         PacketLenBin = list_to_binary(PacketLen),
@@ -373,6 +375,8 @@ encode_polling_xhr_packets_v1(PacketList) ->
     end, <<>>, PacketList).
 
 encode_polling_json_packets_v1(PacketList, JsonP) ->
+    % TODO(joi): I'm pretty sure we could optimize by using an iolist rather
+    % than building an increasingly-larger binary...
     Payload = lists:foldl(fun(Packet, AccIn) ->
         ResultLenBin = integer_to_binary(byte_size(Packet)),
         Packet2 = escape_character(Packet, <<"\\">>),
