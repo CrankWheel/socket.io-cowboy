@@ -30,7 +30,7 @@
 % TODO(joi): Support streaming decodes, and use below.
 -define(MAXIMUM_BODY_BYTES, 24*1024*1024).
 
--record(http_state, {config, sid, heartbeat_tref, pid, jsonp}).
+-record(http_state, {config, sid, heartbeat_tref, pid, jsonp, base64}).
 -record(websocket_state, {config, pid, messages}).
 
 init(Req, [Config]) ->
@@ -39,11 +39,17 @@ init(Req, [Config]) ->
     Sid = proplists:get_value(<<"sid">>, KeyValues),
     Transport = proplists:get_value(<<"transport">>, KeyValues),
     JsonP = proplists:get_value(<<"j">>, KeyValues),
+    Base64Val = proplists:get_value(<<"b64">>, KeyValues),
+    Base64 = case Base64Val of
+        <<"true">> -> true;
+        <<"1">> -> true;
+        _ -> false
+    end,
     case {Transport, Sid} of
         {<<"polling">>, undefined} ->
-            create_session(Req2, #http_state{config = Config, jsonp = JsonP});
+            create_session(Req2, #http_state{config = Config, jsonp = JsonP, base64 = Base64});
         {<<"polling">>, _} when is_binary(Sid) ->
-            handle_polling(Req2, Sid, Config, JsonP);
+            handle_polling(Req2, Sid, Config, JsonP, Base64);
         {<<"websocket">>, _} ->
             websocket_init(Req, Config);
         _ ->
@@ -52,7 +58,7 @@ init(Req, [Config]) ->
     end.
 
 %% Http handlers
-create_session(Req, HttpState = #http_state{jsonp = JsonP, config = #config{
+create_session(Req, HttpState = #http_state{jsonp = JsonP, base64 = Base64, config = #config{
     heartbeat = HeartbeatInterval,
     heartbeat_timeout = HeartbeatTimeout,
     session_timeout = SessionTimeout,
@@ -61,7 +67,7 @@ create_session(Req, HttpState = #http_state{jsonp = JsonP, config = #config{
     enable_websockets = EnableWebsockets
 }}) ->
     Sid = uuids:new(),
-    _Pid = engineio_session:create(Sid, SessionTimeout, Callback, Opts, Req),
+    _Pid = engineio_session:create(Sid, SessionTimeout, Callback, Opts, Req, Base64),
 
     UpgradeList = case EnableWebsockets of
         true -> [<<"websocket">>];
@@ -75,10 +81,13 @@ create_session(Req, HttpState = #http_state{jsonp = JsonP, config = #config{
 
     case JsonP of
         undefined ->
-            ResultLen = [ list_to_integer([D]) || D <- integer_to_list(byte_size(Result) + 1) ],
-            ResultLenBin = list_to_binary(ResultLen),
-            Result2 = <<0, ResultLenBin/binary, 255, "0", Result/binary>>,
-            HttpHeaders = stream_headers();
+            Result2 = encode_polling_xhr_packets_v1([<<$0, Result/binary>>], Base64),
+            case Base64 of
+                true ->
+                    HttpHeaders = text_headers();
+                false ->
+                    HttpHeaders = stream_headers()
+            end;
         Num ->
             ResultLenBin = integer_to_binary(byte_size(Result) + 1),
             Rs = binary:replace(Result, <<"\"">>, <<"\\\"">>, [global]),
@@ -157,16 +166,22 @@ javascript_headers() ->
 
 % If SendNop is true, we must send at least one message to flush our queue,
 % so if the message queue is empty, we still send [nop].
-reply_messages(Req, Messages, SendNop, undefined) ->
+reply_messages(Req, Messages, SendNop, undefined, Base64) ->
     PacketList = case {SendNop, Messages} of
         {true, []} ->
             engineio_data_protocol:encode_v1([nop]);
         _ ->
             engineio_data_protocol:encode_v1(Messages)
     end,
-    PacketListBin = encode_polling_xhr_packets_v1(PacketList),
-    cowboy_req:reply(200, stream_headers(), PacketListBin, Req);
-reply_messages(Req, Messages, SendNop, JsonP) ->
+    PacketListBin = encode_polling_xhr_packets_v1(PacketList, Base64),
+    case Base64 of
+        true ->
+            HttpHeaders = text_headers();
+        false ->
+            HttpHeaders = stream_headers()
+    end,
+    cowboy_req:reply(200, HttpHeaders, PacketListBin, Req);
+reply_messages(Req, Messages, SendNop, JsonP, _Base64) ->
     PacketList = case {SendNop, Messages} of
         {true, []} ->
             engineio_data_protocol:encode_v1([nop]);
@@ -194,18 +209,19 @@ safe_poll(Req, HttpState = #http_state{jsonp = JsonP}, Pid, WaitIfEmpty) ->
     try
         Messages = engineio_session:poll(Pid),
         Transport = engineio_session:transport(Pid),
+        Base64 = engineio_session:b64(Pid),
         case {Transport, WaitIfEmpty, Messages} of
             {websocket, _, _} ->
                 % Our transport has been switched to websocket, so we flush
                 % the transport, sending a nop if there are no messages in the
                 % queue.
-                {stop, reply_messages(Req, Messages, true, JsonP), HttpState};
+                {stop, reply_messages(Req, Messages, true, JsonP, Base64), HttpState};
             {_, true, []} ->
                 % Not responding with 'stop' will make the loop handler continue
                 % to wait.
                 {ok, Req, HttpState};
             _ ->
-                {stop, reply_messages(Req, Messages, true, JsonP), HttpState}
+                {stop, reply_messages(Req, Messages, true, JsonP, Base64), HttpState}
         end
     catch
         exit:{noproc, _} ->
@@ -213,31 +229,32 @@ safe_poll(Req, HttpState = #http_state{jsonp = JsonP}, Pid, WaitIfEmpty) ->
             {stop, cowboy_req:reply(404, [], <<>>, Req), HttpState}
     end.
 
-handle_polling(Req, Sid, Config, JsonP) ->
+handle_polling(Req, Sid, Config, JsonP, Base64) ->
     Method = cowboy_req:method(Req),
     case {engineio_session:find(Sid), Method} of
         {{ok, Pid}, <<"GET">>} ->
             case engineio_session:pull_no_wait(Pid, self()) of
                 {error, noproc} ->
-                    {ok, cowboy_req:reply(400, <<"No such session">>, Req), #http_state{config = Config, sid = Sid, jsonp = JsonP}};
+                    {ok, cowboy_req:reply(400, <<"No such session">>, Req), #http_state{config = Config, sid = Sid, jsonp = JsonP, base64 = Base64}};
                 session_in_use ->
-                    {ok, cowboy_req:reply(404, <<"Session in use">>, Req), #http_state{config = Config, sid = Sid, jsonp = JsonP}};
+                    {ok, cowboy_req:reply(404, <<"Session in use">>, Req), #http_state{config = Config, sid = Sid, jsonp = JsonP, base64 = Base64}};
                 [] ->
                     case engineio_session:transport(Pid) of
                         websocket ->
                             % Just send a NOP to flush this transport.
-                            {ok, reply_messages(Req, [], true, JsonP), #http_state{config = Config, sid = Sid, pid = Pid, jsonp = JsonP}};
+                            {ok, reply_messages(Req, [], true, JsonP, Base64), #http_state{config = Config, sid = Sid, pid = Pid, jsonp = JsonP, base64 = Base64}};
                         _ ->
                             TRef = erlang:start_timer(Config#config.heartbeat, self(), {?MODULE, Pid}),
-                            {cowboy_loop, Req, #http_state{config = Config, sid = Sid, heartbeat_tref = TRef, pid = Pid, jsonp = JsonP}}
+                            {cowboy_loop, Req, #http_state{config = Config, sid = Sid, heartbeat_tref = TRef, pid = Pid, jsonp = JsonP, base64 = Base64}}
                     end;
                 Messages ->
-                    Req1 = reply_messages(Req, Messages, false, JsonP),
-                    {ok, Req1, #http_state{config = Config, sid = Sid, pid = Pid, jsonp = JsonP}}
+                    Req1 = reply_messages(Req, Messages, false, JsonP, Base64),
+                    {ok, Req1, #http_state{config = Config, sid = Sid, pid = Pid, jsonp = JsonP, base64 = Base64}}
             end;
         {{ok, Pid}, <<"POST">>} ->
             case get_request_data(Req, JsonP) of
                 {ok, Data2, Req2} ->
+                    % TODO(je): Check if we need to obey b64 here?
                     Messages = case catch(engineio_data_protocol:decode_v1(Data2)) of
                                    {'EXIT', _Reason} ->
                                        [];
@@ -248,16 +265,16 @@ handle_polling(Req, Sid, Config, JsonP) ->
                                end,
                     engineio_session:recv(Pid, Messages),
                     Req3 = cowboy_req:reply(200, text_headers(), <<"ok">>, Req2),
-                    {ok, Req3, #http_state{config = Config, sid = Sid, jsonp = JsonP}};
+                    {ok, Req3, #http_state{config = Config, sid = Sid, jsonp = JsonP, base64 = Base64}};
                 error ->
-                    {ok, cowboy_req:reply(400, <<"Error reading request data">>, Req), #http_state{config = Config, sid = Sid}}
+                    {ok, cowboy_req:reply(400, <<"Error reading request data">>, Req), #http_state{config = Config, sid = Sid, base64 = Base64}}
             end;
         {{error, not_found}, _} ->
             Req1 = cowboy_req:reply(404, [], <<"Not found">>, Req),
-            {ok, Req1, #http_state{sid = Sid, config = Config, jsonp = JsonP}};
+            {ok, Req1, #http_state{sid = Sid, config = Config, jsonp = JsonP, base64 = Base64}};
         _ ->
             lager:warn("Unknown error ~s, ~s, ~s, ~s", [Sid, Method, Config, JsonP]),
-            {ok, cowboy_req:reply(400, <<"Unknown error">>, Req), #http_state{sid = Sid, config = Config, jsonp = JsonP}}
+            {ok, cowboy_req:reply(400, <<"Unknown error">>, Req), #http_state{sid = Sid, config = Config, jsonp = JsonP, base64 = Base64}}
     end.
 
 %% Websocket handlers
@@ -365,14 +382,20 @@ get_request_data(Req, JsonP) ->
             end
     end.
 
-encode_polling_xhr_packets_v1(PacketList) ->
-    % TODO(joi): I'm pretty sure we could optimize by using an iolist rather
-    % than building an increasingly-larger binary...
+encode_polling_xhr_packets_v1(PacketList, Base64) ->
+    case Base64 of
+        false ->
     lists:foldl(fun(Packet, AccIn) ->
         PacketLen = [list_to_integer([D]) || D <- integer_to_list(byte_size(Packet))],
         PacketLenBin = list_to_binary(PacketLen),
         <<AccIn/binary, 0, PacketLenBin/binary, 255, Packet/binary>>
-    end, <<>>, PacketList).
+            end, <<>>, PacketList);
+        true ->
+            lists:foldl(fun(Packet, AccIn) ->
+                PacketLenStr = list_to_binary(io_lib:format("~p", [byte_size(Packet)])),
+                <<AccIn/binary, PacketLenStr/binary, $:, Packet/binary>>
+            end, <<>>, PacketList)
+    end.
 
 encode_polling_json_packets_v1(PacketList, JsonP) ->
     % TODO(joi): I'm pretty sure we could optimize by using an iolist rather

@@ -16,7 +16,7 @@
 -author('Kirill Trofimov <sinnus@gmail.com>').
 -behaviour(supervisor).
 
--export([start_link/0, start_child/5]).
+-export([start_link/0, start_child/6]).
 -export([init/1]).
 
 %% --------------------------------------------------------------------------
@@ -30,5 +30,5 @@ init([]) ->
           [{undefined, {engineio_session, start_link, []},
             temporary, 5000, worker, [engineio_session]}]}}.
 
-start_child(SessionId, SessionTimeout, Callback, Opts, OriginalRequest) ->
-   supervisor:start_child(?MODULE, [SessionId, SessionTimeout, Callback, Opts, OriginalRequest]).
+start_child(SessionId, SessionTimeout, Callback, Opts, OriginalRequest, Base64) ->
+   supervisor:start_child(?MODULE, [SessionId, SessionTimeout, Callback, Opts, OriginalRequest, Base64]).
