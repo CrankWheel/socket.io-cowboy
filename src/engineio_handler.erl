@@ -101,10 +101,19 @@ create_session(Req, HttpState = #http_state{jsonp = JsonP, base64 = Base64, conf
 % Invariant in all of these: We are an HTTP loop handler.
 info({timeout, TRef, {?MODULE, Pid}}, Req, HttpState = #http_state{heartbeat_tref = TRef}) ->
     safe_poll(Req, HttpState#http_state{heartbeat_tref = undefined}, Pid, false);
-info({message_arrived, Pid}, Req, HttpState = #http_state{pid = StatePid}) ->
+info({message_arrived, Pid}, Req, HttpState = #http_state{pid = StatePid, heartbeat_tref = HeartbeatTRef}) ->
     case Pid of
         StatePid ->
             % This message_arrived was meant for us, so poll and return data.
+
+            % We don't want the timeout any more (since we will be exiting after polling).
+            case HeartbeatTRef of
+                undefined ->
+                    ok;
+                _ ->
+                    erlang:cancel_timer(HeartbeatTRef),
+                    ok
+            end,
             % No other handler should be trying to poll this session, so it
             % should be fine to not wait if the message list is empty.
             safe_poll(Req, HttpState, Pid, false);
@@ -122,9 +131,7 @@ info(Info, Req, HttpState) ->
     lager:info("Unexpected info message ~s", [Info]),
     {stop, Req, HttpState}.
 
-% TODO(joi): We should perhaps end the session if we get Reason = {{error, closed}},
-% i.e. if the long-polling HTTP connection is closed unexpectedly.
-terminate(_Reason, _Req, _HttpState = #http_state{heartbeat_tref = HeartbeatTRef, pid = Pid}) ->
+terminate(Reason, _Req, _HttpState = #http_state{heartbeat_tref = HeartbeatTRef, pid = Pid}) ->
     % Invariant: We are an HTTP handler (loop or regular).
     safe_unsub_caller(Pid, self()),
     case HeartbeatTRef of
@@ -132,6 +139,14 @@ terminate(_Reason, _Req, _HttpState = #http_state{heartbeat_tref = HeartbeatTRef
             ok;
         _ ->
             erlang:cancel_timer(HeartbeatTRef),
+            ok
+    end,
+    case Reason of
+        {error, closed} ->
+            % This indicates that the long-polling connection has been closed
+            % unexpectedly, which generally means that the client is gone.
+            engineio_session:disconnect(Pid);
+        _ ->
             ok
     end;
 terminate(_Reason, _Req, #websocket_state{pid = Pid}) ->
@@ -370,10 +385,10 @@ get_request_data(Req, JsonP) ->
 encode_polling_xhr_packets_v1(PacketList, Base64) ->
     case Base64 of
         false ->
-            lists:foldl(fun(Packet, AccIn) ->
-                PacketLen = [list_to_integer([D]) || D <- integer_to_list(byte_size(Packet))],
-                PacketLenBin = list_to_binary(PacketLen),
-                <<AccIn/binary, 0, PacketLenBin/binary, 255, Packet/binary>>
+    lists:foldl(fun(Packet, AccIn) ->
+        PacketLen = [list_to_integer([D]) || D <- integer_to_list(byte_size(Packet))],
+        PacketLenBin = list_to_binary(PacketLen),
+        <<AccIn/binary, 0, PacketLenBin/binary, 255, Packet/binary>>
             end, <<>>, PacketList);
         true ->
             lists:foldl(fun(Packet, AccIn) ->
@@ -383,6 +398,8 @@ encode_polling_xhr_packets_v1(PacketList, Base64) ->
     end.
 
 encode_polling_json_packets_v1(PacketList, JsonP) ->
+    % TODO(joi): I'm pretty sure we could optimize by using an iolist rather
+    % than building an increasingly-larger binary...
     Payload = lists:foldl(fun(Packet, AccIn) ->
         ResultLenBin = integer_to_binary(byte_size(Packet)),
         Packet2 = escape_character(Packet, <<"\\">>),

@@ -247,7 +247,7 @@ handle_info(register_in_ets,
             {stop, session_id_exists, State}
     end;
 
-handle_info(Info, State = #state{id = Id, registered = true, callback = Callback, session_state = SessionState}) ->
+handle_info(Info, State = #state{registered = true, callback = Callback, session_state = SessionState}) ->
     case Callback:handle_info(Info, SessionState) of
         {ok, NewSessionState} ->
             {noreply, State#state{session_state = NewSessionState}};
@@ -284,7 +284,7 @@ refresh_session_timeout(State = #state{session_timeout = Timeout, session_timeou
 process_messages([], _State) ->
     {noreply, _State};
 
-process_messages([Message|Rest], State = #state{id = SessionId, callback = Callback, session_state = SessionState}) ->
+process_messages([Message|Rest], State = #state{callback = Callback, session_state = SessionState}) ->
     case Message of
         disconnect ->
             {stop, normal, State};
