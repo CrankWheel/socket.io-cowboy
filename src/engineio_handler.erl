@@ -255,10 +255,14 @@ handle_polling(Req, Sid, Config, JsonP, Base64) ->
             case get_request_data(Req, JsonP) of
                 {ok, Data2, Req2} ->
                     % TODO(je): Check if we need to obey b64 here?
+                    ?DBGPRINT(unicode:characters_to_list(Data2, utf8)),
+                    io:fwrite("~w~n", [Data2]),
                     Messages = case catch(engineio_data_protocol:decode_v1(Data2)) of
-                                   {'EXIT', _Reason} ->
+                                   {'EXIT', Reason} ->
+                                       ?DBGPRINT(Reason),
                                        [];
-                                   {error, _Reason} ->
+                                   {error, Reason} ->
+                                       ?DBGPRINT(Reason),
                                        [];
                                    Msgs ->
                                        Msgs
@@ -295,6 +299,9 @@ websocket_init(Req, Config) ->
     end.
 
 websocket_handle({text, Data}, Req, State = #websocket_state{ pid = Pid }) ->
+    ?DBGPRINT(Req),
+    ?DBGPRINT(unicode:characters_to_list(Data, utf8)),
+    io:fwrite("~w~n", [Data]),
     case catch (engineio_data_protocol:decode_v1_for_websocket(Data)) of
         {'EXIT', _Reason} ->
             {ok, Req, State};
@@ -392,10 +399,17 @@ encode_polling_xhr_packets_v1(PacketList, Base64) ->
             end, <<>>, PacketList);
         true ->
             lists:foldl(fun(Packet, AccIn) ->
-                PacketLenStr = list_to_binary(io_lib:format("~p", [byte_size(Packet)])),
-                <<AccIn/binary, PacketLenStr/binary, $:, Packet/binary>>
+                LenBin = binary:list_to_bin(integer_to_list(binary_utf8_len(Packet))),
+                <<AccIn/binary, LenBin/binary, $:, Packet/binary>>
             end, <<>>, PacketList)
     end.
+
+binary_utf8_len(Binary) ->
+    binary_utf8_len(Binary, 0).
+binary_utf8_len(<<>>, Len) ->
+    Len;
+binary_utf8_len(<<_X/utf8, Binary/binary>>, Len) ->
+    binary_utf8_len(Binary, Len+1).
 
 encode_polling_json_packets_v1(PacketList, JsonP) ->
     % TODO(joi): I'm pretty sure we could optimize by using an iolist rather
