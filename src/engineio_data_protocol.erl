@@ -30,7 +30,7 @@ encode_polling_xhr_packets_v1(PacketList, Base64) ->
             end, <<>>, PacketList);
         true ->
             lists:foldl(fun(Packet, AccIn) ->
-                PakcetLenBin = binary:list_to_bin(integer_to_list(binary_utf8_len(Packet))),
+                PacketLenBin = binary:list_to_bin(integer_to_list(binary_utf8_len(Packet))),
                 <<AccIn/binary, PacketLenBin/binary, $:, Packet/binary>>
             end, <<>>, PacketList)
     end.
@@ -108,8 +108,7 @@ d_connect_test_() ->
 
 %%% No format specified in the spec.
 d_heartbeat_test() ->
-    [?_assertEqual(heartbeat, decode_packet(heartbeat())),
-        ?_assertEqual({ping, <<"test">>}, decode_packet_v1(<<"2test">>))].
+    [?_assertEqual({ping, <<"test">>}, decode_packet_v1(<<"2test">>))].
 
 decode_v1_regression_test_() ->
     [
