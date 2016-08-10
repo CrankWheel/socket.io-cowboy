@@ -300,7 +300,7 @@ process_messages([Message|Rest], State = #state{callback = Callback, session_sta
             end;
         _ ->
             %% Skip message
-            lager:warn("Skipping message ~s, ~s, ~s", [Message, Rest, State]),
+            lager:warning("Skipping message ~s, ~s, ~s", [Message, Rest, State]),
             process_messages(Rest, State)
     end.
 
