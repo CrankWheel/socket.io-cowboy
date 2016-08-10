@@ -53,8 +53,8 @@ init(Req, [Config]) ->
         {<<"websocket">>, _} ->
             websocket_init(Req, Config);
         _ ->
-            lager:info("404, unknown transport ~s for SID ~s", [Transport, Sid]),
-            {ok, cowboy_req:reply(404, [], <<>>, Req2), #http_state{}}
+            lager:error("400, unknown transport ~s for SID ~s", [Transport, Sid]),
+            {ok, cowboy_req:reply(400, [], <<>>, Req2), #http_state{}}
     end.
 
 %% Http handlers
@@ -68,7 +68,6 @@ create_session(Req, HttpState = #http_state{jsonp = JsonP, base64 = Base64, conf
 }}) ->
     Sid = uuids:new(),
     _Pid = engineio_session:create(Sid, SessionTimeout, Callback, Opts, Req, Base64),
-
     UpgradeList = case EnableWebsockets of
         true -> [<<"websocket">>];
         false -> []
@@ -128,7 +127,7 @@ info({message_arrived, Pid}, Req, HttpState = #http_state{pid = StatePid, heartb
             {ok, Req, HttpState}
     end;
 info(Info, Req, HttpState) ->
-    lager:info("Unexpected info message ~s", [Info]),
+    lager:error("engineio_handler: Unexpected info message ~s", [Info]),
     {stop, Req, HttpState}.
 
 terminate(Reason, _Req, _HttpState = #http_state{heartbeat_tref = HeartbeatTRef, pid = Pid}) ->
@@ -152,6 +151,9 @@ terminate(Reason, _Req, _HttpState = #http_state{heartbeat_tref = HeartbeatTRef,
 terminate(_Reason, _Req, #websocket_state{pid = Pid}) ->
     % Invariant: We are a WebSocket handler.
     engineio_session:disconnect(Pid),
+    ok;
+terminate(Reason, _Req, _State) ->
+    lager:error("enginio_handler terminating, ~s", [Reason]),
     ok.
 
 text_headers() -> [ {<<"Content-Type">>, <<"text/plain; charset=utf-8">>} ].
@@ -225,8 +227,8 @@ safe_poll(Req, HttpState = #http_state{jsonp = JsonP}, Pid, WaitIfEmpty) ->
         end
     catch
         exit:{noproc, _} ->
-            lager:debug("Couldn't talk to PID ~s, ~s, ~s", [Pid, JsonP, WaitIfEmpty]),
-            {stop, cowboy_req:reply(404, [], <<>>, Req), HttpState}
+            lager:error("engineio_handler: Couldn't talk to PID ~s, ~s, ~s", [Pid, JsonP, WaitIfEmpty]),
+            {stop, cowboy_req:reply(400, [], <<>>, Req), HttpState}
     end.
 
 handle_polling(Req, Sid, Config, JsonP, Base64) ->
@@ -237,7 +239,7 @@ handle_polling(Req, Sid, Config, JsonP, Base64) ->
                 {error, noproc} ->
                     {ok, cowboy_req:reply(400, <<"No such session">>, Req), #http_state{config = Config, sid = Sid, jsonp = JsonP, base64 = Base64}};
                 session_in_use ->
-                    {ok, cowboy_req:reply(404, <<"Session in use">>, Req), #http_state{config = Config, sid = Sid, jsonp = JsonP, base64 = Base64}};
+                    {ok, cowboy_req:reply(400, <<"Session in use">>, Req), #http_state{config = Config, sid = Sid, jsonp = JsonP, base64 = Base64}};
                 [] ->
                     case engineio_session:transport(Pid) of
                         websocket ->
@@ -267,13 +269,15 @@ handle_polling(Req, Sid, Config, JsonP, Base64) ->
                     Req3 = cowboy_req:reply(200, text_headers(), <<"ok">>, Req2),
                     {ok, Req3, #http_state{config = Config, sid = Sid, jsonp = JsonP, base64 = Base64}};
                 error ->
+                    lager:error("engineio_handler: Error reading request data ~s", [Req, JsonP]),
                     {ok, cowboy_req:reply(400, <<"Error reading request data">>, Req), #http_state{config = Config, sid = Sid, base64 = Base64}}
             end;
         {{error, not_found}, _} ->
-            Req1 = cowboy_req:reply(404, [], <<"Not found">>, Req),
+            lager:error("engineio_handler: sid not found ~s", [Sid]),
+            Req1 = cowboy_req:reply(400, [], <<"Not found">>, Req),
             {ok, Req1, #http_state{sid = Sid, config = Config, jsonp = JsonP, base64 = Base64}};
         _ ->
-            lager:warn("Unknown error ~s, ~s, ~s, ~s", [Sid, Method, Config, JsonP]),
+            lager:error("engineio_handler: Unknown error ~s, ~s, ~s, ~s", [Sid, Method, Config, JsonP]),
             {ok, cowboy_req:reply(400, <<"Unknown error">>, Req), #http_state{sid = Sid, config = Config, jsonp = JsonP, base64 = Base64}}
     end.
 
@@ -288,10 +292,10 @@ websocket_init(Req, Config) ->
                     engineio_session:upgrade_transport(Pid, websocket),
                     {cowboy_websocket, Req, #websocket_state{config = Config, pid = Pid, messages = []}};
                 {error, not_found} ->
-                    {ok, cowboy_req:reply(500, <<"No such session">>, Req)}
+                    {ok, cowboy_req:reply(400, [], <<"No such session">>, Req), #websocket_state{}}
             end;
         _ ->
-            {ok, cowboy_req:reply(500, <<"No such session">>, Req)}
+            {ok, cowboy_req:reply(400, [], <<"No such session">>, Req), #websocket_state{}}
     end.
 
 websocket_handle({text, Data}, Req, State = #websocket_state{ pid = Pid }) ->
@@ -308,19 +312,21 @@ websocket_handle({text, Data}, Req, State = #websocket_state{ pid = Pid }) ->
         Msgs ->
             case engineio_session:recv(Pid, Msgs) of
                 noproc ->
-                    {shutdown, Req, State};
+                    lager:error("engineio_handler: websocket recv failed"),
+                    {stop, Req, State};
                 _ ->
                     {ok, Req, State}
             end
     end;
-websocket_handle(_Data, Req, State) ->
-    % TODO(joi): Log
+websocket_handle(Data, Req, State) ->
+    lager:warning("engineio_handler: unknown websocket message ~s", [Data]),
     {ok, Req, State}.
 
 websocket_info(go, Req, State = #websocket_state{pid = Pid, messages = RestMessages}) ->
     case engineio_session:pull(Pid, self()) of
         {error, noproc} ->
-            {shutdown, Req, State};
+            lager:error("engineio_handler: no such session for websocket"),
+            {stop, Req, State};
         session_in_use ->
             {ok, Req, State};  % TODO(joi): Really?
         Messages ->
@@ -346,10 +352,12 @@ websocket_info({message_arrived, Pid}, Req, State = #websocket_state{pid = Pid, 
     RestMessages2 = lists:append([RestMessages, Messages]),
     self() ! go,
     {ok, Req, State#websocket_state{messages = RestMessages2}};
-websocket_info({'DOWN', _Ref, process, Pid, _Reason}, Req, State = #websocket_state{pid = Pid}) ->
-    {shutdown, Req, State};
-websocket_info(_Info, Req, State) ->
+websocket_info({'DOWN', _Ref, process, Pid, Reason}, Req, State = #websocket_state{pid = Pid}) ->
+    lager:error("engineio_handler: websocket down"),
+    {stop, Req, State};
+websocket_info(Info, Req, State) ->
     % TODO(joi): Log
+    lager:warning("engineio_handler: unknown websocket info ~s", [Info]),
     {ok, Req, State}.
 
 enable_cors(Req) ->
