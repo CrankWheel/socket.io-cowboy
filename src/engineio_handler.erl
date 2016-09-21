@@ -288,8 +288,6 @@ websocket_init(Req, Config) ->
         Sid when is_binary(Sid) ->
             case engineio_session:find(Sid) of
                 {ok, Pid} ->
-                    erlang:monitor(process, Pid),
-                    engineio_session:upgrade_transport(Pid, websocket),
                     {cowboy_websocket, Req, #websocket_state{config = Config, pid = Pid, messages = []}};
                 {error, not_found} ->
                     {ok, cowboy_req:reply(400, [], <<"No such session">>, Req), #websocket_state{}}
@@ -307,6 +305,8 @@ websocket_handle({text, Data}, Req, State = #websocket_state{ pid = Pid }) ->
             engineio_session:refresh(Pid),
             {reply, {text, Packet}, Req, State};
         [upgrade] ->
+            erlang:monitor(process, Pid),
+            engineio_session:upgrade_transport(Pid, websocket),
             self() ! go,
             {ok, Req, State};
         Msgs ->
