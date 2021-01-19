@@ -239,7 +239,7 @@ handle_polling(Req, Sid, Config, JsonP, Base64) ->
                 session_in_use ->
                     {ok, cowboy_req:reply(400, <<"Session in use">>, Req), #http_state{config = Config, sid = Sid, jsonp = JsonP, base64 = Base64}};
                 [] ->
-                    case engineio_session:transport(Pid) of
+                    case engineio_session:get_transport(Pid) of
                         websocket ->
                             % Just send a NOP to flush this transport.
                             {ok, reply_messages(Req, [], true, JsonP, Base64), #http_state{config = Config, sid = Sid, pid = Pid, jsonp = JsonP, base64 = Base64}};

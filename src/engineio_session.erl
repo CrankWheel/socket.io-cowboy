@@ -22,7 +22,7 @@
 
 %% API
 -export([start_link/6, init_mnesia/0, configure/1, create/6, find/1, pull/2, pull_no_wait/2, poll/1, safe_poll/1, recv/2,
-         send_message/2, refresh/1, disconnect/1, unsub_caller/2, upgrade_transport/2]).
+         send_message/2, refresh/1, disconnect/1, unsub_caller/2, get_transport/1, upgrade_transport/2]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -111,6 +111,9 @@ disconnect(Pid) ->
 unsub_caller(Pid, Caller) ->
     gen_server:cast(Pid, {unsub_caller, Caller}).
 
+get_transport(Pid) ->
+    gen_server:call(Pid, {get_transport}).
+
 upgrade_transport(Pid, Transport) ->
     gen_server:call(Pid, {transport, Transport}).
 
@@ -160,6 +163,9 @@ handle_call({pull, Pid, Wait}, _From,  State = #state{messages = Messages, calle
 
 handle_call({pull, _Pid, _}, _From,  State) ->
     {reply, session_in_use, State};
+
+handle_call({get_transport}, _From, State = #state{transport = Transport}) ->
+    {reply, Transport, State};
 
 handle_call({transport, websocket}, _From, State = #state{transport = polling, caller = Caller}) ->
     case Caller of
