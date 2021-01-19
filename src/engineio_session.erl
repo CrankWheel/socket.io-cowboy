@@ -86,6 +86,7 @@ pull(Pid, Caller) ->
 pull_no_wait(Pid, Caller) ->
     safe_call(Pid, {pull, Caller, false}, 5000).
 
+% Returns {Transport, Messages, Base64}
 poll(Pid) ->
     gen_server:call(Pid, {poll}).
 

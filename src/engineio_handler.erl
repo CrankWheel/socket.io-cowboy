@@ -341,7 +341,7 @@ websocket_info(go_rest, Req, State = #websocket_state{messages = RestMessages}) 
             {reply, Reply, Req, State#websocket_state{messages = []}}
     end;
 websocket_info({message_arrived, Pid}, Req, State = #websocket_state{pid = Pid, messages = RestMessages}) ->
-    Messages =  case engineio_session:safe_poll(Pid) of
+    {_Transport, Messages, _Base64} =  case engineio_session:safe_poll(Pid) of
                     {error, noproc} ->
                         [];
                     Result ->
