@@ -209,9 +209,7 @@ safe_unsub_caller(Pid, Caller) ->
 safe_poll(Req, HttpState = #http_state{jsonp = JsonP}, Pid, WaitIfEmpty) ->
     % INVARIANT: We are an HTTP loop handler.
     try
-        Messages = engineio_session:poll(Pid),
-        Transport = engineio_session:transport(Pid),
-        Base64 = engineio_session:b64(Pid),
+        {Transport, Messages, Base64} = engineio_session:poll(Pid),
         case {Transport, WaitIfEmpty, Messages} of
             {websocket, _, _} ->
                 % Our transport has been switched to websocket, so we flush
@@ -353,7 +351,7 @@ websocket_info({message_arrived, Pid}, Req, State = #websocket_state{pid = Pid, 
     self() ! go,
     {ok, Req, State#websocket_state{messages = RestMessages2}};
 websocket_info({'DOWN', _Ref, process, Pid, Reason}, Req, State = #websocket_state{pid = Pid}) ->
-    lager:error("engineio_handler: websocket down"),
+    lager:error("engineio_handler: engineio_session ~p down, ~p", [Pid, Reason]),
     {stop, Req, State};
 websocket_info(Info, Req, State) ->
     % TODO(joi): Log

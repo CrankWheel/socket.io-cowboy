@@ -22,7 +22,7 @@
 
 %% API
 -export([start_link/6, init_mnesia/0, configure/1, create/6, find/1, pull/2, pull_no_wait/2, poll/1, safe_poll/1, recv/2,
-         send_message/2, refresh/1, disconnect/1, unsub_caller/2, upgrade_transport/2, transport/1, b64/1]).
+         send_message/2, refresh/1, disconnect/1, unsub_caller/2, upgrade_transport/2]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -81,16 +81,17 @@ find(SessionId) ->
     end.
 
 pull(Pid, Caller) ->
-    safe_call(Pid, {pull, Caller, true}, infinity).
+    safe_call(Pid, {pull, Caller, true}, 5000).
 
 pull_no_wait(Pid, Caller) ->
-    safe_call(Pid, {pull, Caller, false}, infinity).
+    safe_call(Pid, {pull, Caller, false}, 5000).
 
 poll(Pid) ->
-    gen_server:call(Pid, {poll}, infinity).
+    gen_server:call(Pid, {poll}).
 
+% Returns {Transport, Messages, Base64}
 safe_poll(Pid) ->
-    safe_call(Pid, {poll}, infinity).
+    safe_call(Pid, {poll}, 5000).
 
 send(Pid, Message) ->
     gen_server:cast(Pid, {send, Message}).
@@ -108,16 +109,11 @@ disconnect(Pid) ->
     gen_server:cast(Pid, {disconnect}).
 
 unsub_caller(Pid, Caller) ->
-    gen_server:call(Pid, {unsub_caller, Caller}).
+    gen_server:cast(Pid, {unsub_caller, Caller}).
 
 upgrade_transport(Pid, Transport) ->
     gen_server:call(Pid, {transport, Transport}).
 
-transport(Pid) ->
-    gen_server:call(Pid, {transport}).
-
-b64(Pid) ->
-    gen_server:call(Pid, {base64}).
 %%--------------------------------------------------------------------
 start_link(SessionId, SessionTimeout, Callback, Opts, OriginalRequest, Base64) ->
     gen_server:start_link(?MODULE, [SessionId, SessionTimeout, Callback, Opts, OriginalRequest, Base64], []).
@@ -165,23 +161,6 @@ handle_call({pull, Pid, Wait}, _From,  State = #state{messages = Messages, calle
 handle_call({pull, _Pid, _}, _From,  State) ->
     {reply, session_in_use, State};
 
-handle_call({poll}, _From, State = #state{messages = [], transport = polling}) ->
-    {reply, [], State};
-handle_call({poll}, _From, State = #state{messages = Messages}) ->
-    State1 = refresh_session_timeout(State),
-    {reply, lists:reverse(Messages), State1#state{messages = [], caller = undefined}};
-
-handle_call({unsub_caller, _Caller}, _From, State = #state{caller = undefined}) ->
-    {reply, ok, State};
-
-handle_call({unsub_caller, Caller}, _From, State = #state{caller = PrevCaller}) ->
-    case Caller of
-        PrevCaller ->
-            {reply, ok, State#state{caller = undefined}};
-        _ ->
-            {reply, ok, State}
-    end;
-
 handle_call({transport, websocket}, _From, State = #state{transport = polling, caller = Caller}) ->
     case Caller of
         undefined ->
@@ -193,11 +172,9 @@ handle_call({transport, websocket}, _From, State = #state{transport = polling, c
 handle_call({transport, Transport}, _From, State) ->
     {reply, ok, State#state{transport = Transport}};
 
-handle_call({transport}, _From, State = #state{transport = Transport}) ->
-    {reply, Transport, State};
-
-handle_call({base64}, _From, State = #state{base64 = Base64}) ->
-    {reply, Base64, State};
+handle_call({poll}, _From, State = #state{transport = Transport, base64 = Base64, messages = Messages}) ->
+    State1 = refresh_session_timeout(State),
+    {reply, {Transport, lists:reverse(Messages), Base64}, State1#state{messages = [], caller = undefined}};
 
 
 handle_call(_Request, _From, State) ->
@@ -224,6 +201,16 @@ handle_cast({recv, Messages}, State = #state{message_count = MessageCount}) ->
 handle_cast({refresh}, State) ->
     {noreply, refresh_session_timeout(State)};
 
+handle_cast({unsub_caller, _Caller}, State = #state{caller = undefined}) ->
+    {noreply, State};
+handle_cast({unsub_caller, Caller}, State = #state{caller = PrevCaller}) ->
+    case Caller of
+        PrevCaller ->
+            {noreply, State#state{caller = undefined}};
+        _ ->
+            {noreply, State}
+    end;
+
 handle_cast({disconnect}, State) ->
     {stop, normal, State};
 
@@ -234,7 +221,7 @@ handle_info(session_timeout, State) ->
     {stop, normal, State};
 
 handle_info(register_in_ets,
-    State = #state{id = SessionId, registered = false, callback = Callback, opts = Opts, original_request = OriginalRequest, base64 = Base64}) ->
+    State = #state{id = SessionId, registered = false, callback = Callback, opts = Opts, original_request = OriginalRequest}) ->
     case mnesia:dirty_write(#?SESSION_PID_TABLE{sid = SessionId, pid = self()}) of
         ok ->
             case Callback:open(SessionId, Opts, OriginalRequest) of
