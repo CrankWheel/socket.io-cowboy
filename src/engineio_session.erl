@@ -81,18 +81,18 @@ find(SessionId) ->
     end.
 
 pull(Pid, Caller) ->
-    safe_call(Pid, {pull, Caller, true}, 5000).
+    safe_call(Pid, {pull, Caller, true}, 10000).
 
 pull_no_wait(Pid, Caller) ->
-    safe_call(Pid, {pull, Caller, false}, 5000).
+    safe_call(Pid, {pull, Caller, false}, 10000).
 
 % Returns {Transport, Messages, Base64}
 poll(Pid) ->
-    gen_server:call(Pid, {poll}).
+    gen_server:call(Pid, {poll}, 10000).
 
 % Returns {Transport, Messages, Base64}
 safe_poll(Pid) ->
-    safe_call(Pid, {poll}, 5000).
+    safe_call(Pid, {poll}, 10000).
 
 send(Pid, Message) ->
     gen_server:cast(Pid, {send, Message}).
@@ -113,10 +113,10 @@ unsub_caller(Pid, Caller) ->
     gen_server:cast(Pid, {unsub_caller, Caller}).
 
 get_transport(Pid) ->
-    gen_server:call(Pid, {get_transport}).
+    gen_server:call(Pid, {get_transport}, 10000).
 
 upgrade_transport(Pid, Transport) ->
-    gen_server:call(Pid, {transport, Transport}).
+    gen_server:call(Pid, {transport, Transport}, 10000).
 
 %%--------------------------------------------------------------------
 start_link(SessionId, SessionTimeout, Callback, Opts, OriginalRequest, Base64) ->
@@ -253,7 +253,7 @@ handle_info(_Info, State) ->
     {noreply, State}.
 
 terminate(_Reason, _State = #state{id = SessionId, registered = Registered, callback = Callback, session_state = SessionState, message_count = MessageCount}) ->
-    lager:debug("Session ~s terminating, message count ~s", [self(), MessageCount]),
+    lager:info("Session ~s terminating, message count ~s, reason ~p", [self(), MessageCount, _Reason]),
     mnesia:dirty_delete(?SESSION_PID_TABLE, SessionId),
     case Registered of
         true ->
