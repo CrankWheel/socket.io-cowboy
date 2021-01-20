@@ -20,6 +20,8 @@
 
 -include("engineio_internal.hrl").
 
+-define(TIMEOUT_MS, 30000).
+
 %% API
 -export([start_link/6, init_mnesia/0, configure/1, create/6, find/1, pull/2, pull_no_wait/2, poll/1, safe_poll/1, recv/2,
          send_message/2, refresh/1, disconnect/1, unsub_caller/2, get_transport/1, upgrade_transport/2]).
@@ -81,18 +83,18 @@ find(SessionId) ->
     end.
 
 pull(Pid, Caller) ->
-    safe_call(Pid, {pull, Caller, true}, 10000).
+    safe_call(Pid, {pull, Caller, true}, ?TIMEOUT_MS).
 
 pull_no_wait(Pid, Caller) ->
-    safe_call(Pid, {pull, Caller, false}, 10000).
+    safe_call(Pid, {pull, Caller, false}, ?TIMEOUT_MS).
 
 % Returns {Transport, Messages, Base64}
 poll(Pid) ->
-    gen_server:call(Pid, {poll}, 10000).
+    gen_server:call(Pid, {poll}, ?TIMEOUT_MS).
 
 % Returns {Transport, Messages, Base64}
 safe_poll(Pid) ->
-    safe_call(Pid, {poll}, 10000).
+    safe_call(Pid, {poll}, ?TIMEOUT_MS).
 
 send(Pid, Message) ->
     gen_server:cast(Pid, {send, Message}).
@@ -113,10 +115,10 @@ unsub_caller(Pid, Caller) ->
     gen_server:cast(Pid, {unsub_caller, Caller}).
 
 get_transport(Pid) ->
-    gen_server:call(Pid, {get_transport}, 10000).
+    gen_server:call(Pid, {get_transport}, ?TIMEOUT_MS).
 
 upgrade_transport(Pid, Transport) ->
-    gen_server:call(Pid, {transport, Transport}, 10000).
+    gen_server:call(Pid, {transport, Transport}, ?TIMEOUT_MS).
 
 %%--------------------------------------------------------------------
 start_link(SessionId, SessionTimeout, Callback, Opts, OriginalRequest, Base64) ->
