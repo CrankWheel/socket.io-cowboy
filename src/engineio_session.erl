@@ -20,7 +20,7 @@
 
 -include("engineio_internal.hrl").
 
--define(TIMEOUT_MS, 30000).
+-define(TIMEOUT_MS, 18000).
 
 %% API
 -export([start_link/6, init_mnesia/0, configure/1, create/6, find/1, pull/2, pull_no_wait/2, poll/1, safe_poll/1, recv/2,
