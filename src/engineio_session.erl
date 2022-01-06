@@ -81,10 +81,10 @@ find(SessionId) ->
     end.
 
 pull(Pid, Caller) ->
-    safe_call(Pid, {pull, Caller, true}, 5000).
+    safe_call(Pid, {pull, Caller, true}, 12000).
 
 pull_no_wait(Pid, Caller) ->
-    safe_call(Pid, {pull, Caller, false}, 5000).
+    safe_call(Pid, {pull, Caller, false}, 12000).
 
 % Returns {Transport, Messages, Base64}
 poll(Pid) ->
@@ -92,7 +92,7 @@ poll(Pid) ->
 
 % Returns {Transport, Messages, Base64}
 safe_poll(Pid) ->
-    safe_call(Pid, {poll}, 5000).
+    safe_call(Pid, {poll}, 12000).
 
 send(Pid, Message) ->
     gen_server:cast(Pid, {send, Message}).
