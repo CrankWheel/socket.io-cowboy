@@ -1,0 +1,26 @@
+{"1.2.0",
+[{<<"cowboy">>,
+  {git,"https://github.com/CrankWheel/cowboy.git",
+       {ref,"8144237459e98ee4cfabc390dba85cdd967bda98"}},
+  0},
+ {<<"cowlib">>,
+  {git,"https://github.com/ninenines/cowlib",
+       {ref,"14e597baa42a436469f99661ed7994685e269dc2"}},
+  1},
+ {<<"goldrush">>,{pkg,<<"goldrush">>,<<"0.1.9">>},1},
+ {<<"jiffy">>,{pkg,<<"jiffy">>,<<"1.1.1">>},0},
+ {<<"lager">>,{pkg,<<"lager">>,<<"3.9.2">>},0},
+ {<<"ranch">>,
+  {git,"https://github.com/ninenines/ranch",
+       {ref,"adf1822defc2b7cfdc7aca112adabfa1d614043c"}},
+  1}]}.
+[
+{pkg_hash,[
+ {<<"goldrush">>, <<"F06E5D5F1277DA5C413E84D5A2924174182FB108DABB39D5EC548B27424CD106">>},
+ {<<"jiffy">>, <<"ACA10F47AA91697BF24AB9582C74E00E8E95474C7EF9F76D4F1A338D0F5DE21B">>},
+ {<<"lager">>, <<"4CAB289120EB24964E3886BD22323CB5FEFE4510C076992A23AD18CF85413D8C">>}]},
+{pkg_hash_ext,[
+ {<<"goldrush">>, <<"99CB4128CFFCB3227581E5D4D803D5413FA643F4EB96523F77D9E6937D994CEB">>},
+ {<<"jiffy">>, <<"62E1F0581C3C19C33A725C781DFA88410D8BFF1BBAFC3885A2552286B4785C4C">>},
+ {<<"lager">>, <<"7F904D9E87A8CB7E66156ED31768D1C8E26EBA1D54F4BC85B1AA4AC1F6340C28">>}]}
+].

@@ -10,3 +10,4 @@ deps
 *.plt
 *.dump
 *.iml
+_build
