@@ -255,7 +255,7 @@ handle_info(_Info, State) ->
     {noreply, State}.
 
 terminate(_Reason, _State = #state{id = SessionId, registered = Registered, callback = Callback, session_state = SessionState, message_count = MessageCount}) ->
-    lager:info("Session ~s terminating, message count ~s, reason ~p", [self(), MessageCount, _Reason]),
+    lager:info("Session ~p terminating, message count ~s, reason ~p", [self(), MessageCount, _Reason]),
     mnesia:dirty_delete(?SESSION_PID_TABLE, SessionId),
     case Registered of
         true ->
